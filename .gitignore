@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ambientes virtuais
+venv/
+env/
+ENV/
+
+# PyInstaller
+build/
+dist/
+*.spec
+*.pyc
+
+# Banco de dados (opcional - você pode querer versionar)
+*.db
+*.sqlite
+*.sqlite3
+
+# PDFs gerados (opcional - você pode querer versionar)
+OS_DIPCELL/
+*.pdf
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Arquivos temporários
+*.tmp
+*.temp
+
