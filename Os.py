@@ -472,6 +472,8 @@ class SistemaOS:
         
         self.tipo_documento_var = tk.StringVar(value="OS") 
         self.dias_garantia_var = tk.StringVar(value="90 Dias") 
+        # NOVO: Variável para a Data de Entrada, inicializada com a data atual
+        self.data_entrada_var = tk.StringVar(value=datetime.now().strftime("%d/%m/%Y"))
         
         self.criar_tela_preenchimento(self.container)
         self.criar_tela_lista(self.container)
@@ -564,7 +566,8 @@ class SistemaOS:
             
             campos_info = [
                 ("Cliente*", "cliente"), ("Modelo*", "modelo"),
-                ("Telefone*", "telefone"), ("IMEI", "imei"),
+                ("Telefone*", "telefone"), ("Data de Entrada*", "data_entrada"), # Campo de data adicionado
+                ("IMEI", "imei"),
                 ("Senha/Padrão", "senha"), ("Acessórios", "acessorios"),
                 ("Tipo de Garantia*", "tipo_garantia"), ("Método de Pagamento*", "metodo_pagamento"),
                 ("Valor (R$)*", "valor"), ("Situacao*", "situacao")
@@ -588,6 +591,33 @@ class SistemaOS:
                     else:
                         label_widget.grid_forget()
                         entry_widget.grid_forget()
+                        
+            # >>> IMPLEMENTAÇÃO PARA OCULTAR/MOSTRAR CHECKLIST E DETALHE ADICIONAL <<<
+            problemas_row_start = len(campos_info) // 2
+            problemas_row_end = problemas_row_start + 1 + 7
+
+            if is_os:
+                # Mostra o Checklist e o Detalhe Adicional (abaixo da checklist)
+                self.checklist_frame.grid(row=problemas_row_start + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(15, 5))
+                self.campos["problemas_detalhe_label"].configure(text="Detalhe Adicional (Opcional):")
+                self.campos["problemas_detalhe_label"].grid(row=problemas_row_end + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
+                self.campos["problemas_detalhe"].grid(row=problemas_row_end + 2, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 10))
+            else:
+                # Oculta o Checklist
+                self.checklist_frame.grid_forget()
+                
+                # Reposiciona o campo Detalhe Adicional (Problemas) logo abaixo dos outros campos
+                l_detalhe = self.campos["problemas_detalhe_label"]
+                e_detalhe = self.campos["problemas_detalhe"]
+                
+                # A última linha preenchida antes da checklist era 'dias_garantia' que está na linha 'dias_row'
+                dias_row = len(campos_info) // 2 
+                
+                l_detalhe.configure(text="Notas de Venda (Opcional):")
+                l_detalhe.grid(row=dias_row + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
+                e_detalhe.grid(row=dias_row + 2, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 10))
+            # >>> FIM DA IMPLEMENTAÇÃO PARA OCULTAR/MOSTRAR CHECKLIST E DETALHE ADICIONAL <<<
+
 
         # Logo (Usa tk.Label pois a imagem é PIL.ImageTk)
         if os.path.exists(LOGO_PADRAO):
@@ -645,7 +675,8 @@ class SistemaOS:
 
         campos_info = [
             ("Cliente*", "cliente"), ("Modelo*", "modelo"),
-            ("Telefone*", "telefone"), ("IMEI", "imei"),
+            ("Telefone*", "telefone"), ("Data de Entrada*", "data_entrada"), # NOVO CAMPO AQUI
+            ("IMEI", "imei"),
             ("Senha/Padrão", "senha"), ("Acessórios", "acessorios"),
             ("Tipo de Garantia*", "tipo_garantia"), ("Método de Pagamento*", "metodo_pagamento"),
             ("Valor (R$)*", "valor"), ("Situacao*", "situacao")
@@ -689,6 +720,8 @@ class SistemaOS:
                 elif key == "valor":
                     e.configure(validate="key", validatecommand=(self.vmoney, "%P"))
                     e.insert(0, "0,00") # Valor inicial
+                elif key == "data_entrada": # Configuração do novo campo de data
+                    e.configure(textvariable=self.data_entrada_var)
             
             e.grid(row=row, column=col + 1, sticky="ew", padx=10, pady=(0, 5))
             self.campos[key] = e
@@ -714,7 +747,7 @@ class SistemaOS:
         problemas_row_start = len(campos_info) // 2
         
         self.checklist_frame = ctk.CTkFrame(campo_frame, fg_color="transparent") 
-        self.checklist_frame.grid(row=problemas_row_start + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(15, 5))
+        # A grid para o checklist_frame será definida por alternar_tipo_documento
         ctk.CTkLabel(self.checklist_frame, text="CHECKLIST (PROBLEMAS/STATUS)", font=('Arial', 10, 'bold')).pack(anchor="w")
         
         self.checklist_vars = {}
@@ -743,15 +776,14 @@ class SistemaOS:
             self.checklist_vars[item] = var
 
         # --- CAMPO DETALHE ADICIONAL (PROBLEMAS/OUTROS) ---
-        problemas_row_end = problemas_row_start + 1 + 7
         
         l_detalhe = ctk.CTkLabel(campo_frame, text="Detalhe Adicional (Opcional):")
         self.campos["problemas_detalhe_label"] = l_detalhe
-        l_detalhe.grid(row=problemas_row_end + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
+        # O posicionamento inicial (grid) será definido por alternar_tipo_documento
         
         # Substitui RoundedEntry por CTkEntry
         e_detalhe = ctk.CTkEntry(campo_frame, width=W_ENTRY * 2 + 30)
-        e_detalhe.grid(row=problemas_row_end + 2, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 10))
+        # O posicionamento inicial (grid) será definido por alternar_tipo_documento
         self.campos["problemas_detalhe"] = e_detalhe
         
         # --- FIM SEÇÃO CHECKLIST ---
@@ -776,6 +808,7 @@ class SistemaOS:
         b_lista.grid(row=0, column=2, padx=6)
         self.botoes_preenchimento.append(b_lista)
 
+        # Chama a função para configurar o layout inicial (OS por padrão)
         alternar_tipo_documento() 
 
 
@@ -865,7 +898,7 @@ class SistemaOS:
         self.botoes_lista.append(b_ver_pdf)
         
         b_deletar = ctk.CTkButton(action_frame, text="Deletar", width=150, command=self.deletar, 
-                                  fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE) # Mudado para verde
+                                  fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE) 
         b_deletar.pack(side=tk.LEFT, padx=5)
         self.botoes_lista.append(b_deletar)
 
@@ -899,6 +932,10 @@ class SistemaOS:
         self.campos["valor"].insert(0, "0,00")
         self.campos["problemas_detalhe"].delete(0, tk.END) 
         
+        # NOVO: Limpar e resetar a data de entrada
+        self.campos["data_entrada"].delete(0, tk.END)
+        self.campos["data_entrada"].insert(0, datetime.now().strftime("%d/%m/%Y"))
+
         # Limpar CTkComboBox
         self.campos["situacao"].set("EM ABERTO")
         self.campos["tipo_garantia"].set("Com Garantia")
@@ -915,7 +952,6 @@ class SistemaOS:
 
     
     def salvar(self):
-        # ... (Mantido)
         # 1. Coleta e validação de dados
         cliente = self.campos["cliente"].get().strip()
         telefone = self.campos["telefone"].get().strip()
@@ -933,6 +969,11 @@ class SistemaOS:
             messagebox.showerror("Erro de Valor", "Formato de valor (R$) inválido.")
             return
 
+        # COLETANDO DATA DE ENTRADA (USANDO O VALOR DO CAMPO EDITÁVEL)
+        entrada = self.campos["data_entrada"].get().strip()
+        if not entrada:
+            entrada = datetime.now().strftime("%d/%m/%Y") # Fallback, embora o campo já venha preenchido.
+
         # 2. Coleta de dados restantes
         numero = self.numero_documento 
         imei = self.campos["imei"].get().strip()
@@ -944,8 +985,6 @@ class SistemaOS:
         metodo_pagamento = self.campos["metodo_pagamento"].get()
         tipo_documento = self.tipo_documento_var.get()
 
-        entrada = datetime.now().strftime("%d/%m/%Y")
-        
         saida = ""
         if situacao == "CONCLUÍDA":
             saida = datetime.now().strftime("%d/%m/%Y")
@@ -958,8 +997,15 @@ class SistemaOS:
 
         garantia = "S/Garantia"
         if tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
-            data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
-            garantia = data_garantia.strftime("%d/%m/%Y")
+            # Garante que a garantia é calculada a partir da data de entrada
+            try:
+                data_base = datetime.strptime(entrada, "%d/%m/%Y")
+                data_garantia = data_base + timedelta(days=dias_garantia_num)
+                garantia = data_garantia.strftime("%d/%m/%Y")
+            except ValueError:
+                # Se a data de entrada for inválida (raro, mas possível), usa a data atual
+                data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
+                garantia = data_garantia.strftime("%d/%m/%Y")
 
         checklist_data = [f"{item}:{var.get()}" for item, var in self.checklist_vars.items()]
         checklist_str = ";".join(checklist_data)
@@ -987,6 +1033,7 @@ class SistemaOS:
         }
         
         # 4. Geração do PDF
+        # Se for VENDA, o checklist_str pode ser enviado vazio, pois não é usado na função gerar_documento para Venda, mas o parâmetro é obrigatório
         caminho_pdf = gerar_documento(dados_db, valor_texto, total_float, tipo_garantia, metodo_pagamento, checklist_str, tipo_documento, dias_garantia_num)
         
         if caminho_pdf:
