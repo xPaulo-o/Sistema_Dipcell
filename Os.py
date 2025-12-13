@@ -4,8 +4,11 @@ import os
 import sys 
 import sqlite3
 from datetime import datetime, timedelta
-from tkinter import *
+import tkinter as tk # Manter tkinter para constantes (tk.END) e Treeview
 from tkinter import ttk, messagebox
+
+# NOVO: Importa CustomTkinter
+import customtkinter as ctk
 
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
@@ -21,16 +24,28 @@ from reportlab.lib.colors import grey
 from PIL import Image as PILImage, ImageTk
 
 # ==========================================================
+# CONFIGURAÇÃO CUSTOMTKINTER
+# ==========================================================
+
+# Define a aparência padrão como "Dark" (Escuro) e o tema padrão como "green"
+ctk.set_appearance_mode("Dark") 
+ctk.set_default_color_theme("green") 
+
+# Constantes de Cor 
+COR_VERDE_PRINCIPAL = '#2E8B57' 
+COR_VERMELHO = "#DC3545" 
+COR_AZUL = "#007BFF" 
+COR_HOVER_VERDE = "#226C41" # Variação mais escura para o hover
+
+# ==========================================================
 # FUNÇÕES AUXILIARES PARA COMPATIBILIDADE E ROBUSTEZ
 # ==========================================================
 
 def resource_path(relative_path):
     """Obtém o caminho absoluto para o recurso, funciona para desenvolvimento e para PyInstaller."""
     try:
-        # Caminho temporário criado pelo PyInstaller
         base_path = sys._MEIPASS
     except Exception:
-        # Caminho padrão quando rodando como script
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
@@ -38,10 +53,8 @@ def resource_path(relative_path):
 def get_app_directory():
     """Retorna o diretório onde o executável está rodando (ou o diretório do script)."""
     if getattr(sys, 'frozen', False):
-        # Executável compilado (PyInstaller)
         return os.path.dirname(sys.executable)
     else:
-        # Script Python normal
         return os.path.dirname(os.path.abspath(__file__))
 
 def abrir_arquivo(caminho):
@@ -54,14 +67,11 @@ def abrir_arquivo(caminho):
         else:  # Linux e outros
             os.system(f"xdg-open '{caminho}'")
     except Exception as e:
-        # Fallback: tenta abrir com o comando padrão do sistema
         try:
             import subprocess
             subprocess.Popen([caminho], shell=True)
         except Exception as e2:
-            # Se messagebox não estiver disponível, apenas imprime o erro
             try:
-                from tkinter import messagebox
                 messagebox.showerror("Erro", f"Não foi possível abrir o arquivo:\n{caminho}\n\nErro: {str(e2)}")
             except:
                 print(f"Erro ao abrir arquivo {caminho}: {str(e2)}")
@@ -76,11 +86,11 @@ LOGO_PADRAO = resource_path("logo.png")
 
 
 # ==========================================================
-# BANCO DE DADOS + MIGRAÇÃO (INCLUI CAMPO CHECKLIST + DIAS_GARANTIA + TIPO_DOCUMENTO)
+# BANCO DE DADOS + MIGRAÇÃO (SEM ALTERAÇÕES)
 # ==========================================================
 
 def criar_banco():
-    """Cria o banco de dados com tratamento robusto de erros."""
+    # Código da função criar_banco (mantido inalterado)
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
@@ -128,7 +138,6 @@ def criar_banco():
         for col, tipo in obrig.items():
             if col not in cols:
                 try:
-                    # Define um valor padrão razoável para a migração
                     if col == "dias_garantia":
                         default_val = "90"
                     elif col == "tipo_documento":
@@ -139,7 +148,6 @@ def criar_banco():
                     c.execute(f"ALTER TABLE os ADD COLUMN {col} {tipo} DEFAULT {default_val}")
                     conn.commit()
                 except sqlite3.Error as e:
-                    # Log do erro mas continua (coluna pode já existir)
                     print(f"Aviso: Não foi possível adicionar coluna {col}: {e}")
                     pass
 
@@ -156,18 +164,16 @@ def criar_banco():
 
 
 # ==========================================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES (mantidas)
 # ==========================================================
 
 def parse_monetario_to_float(txt):
     if not txt:
         return 0.0
-    # Adiciona tratamento para a vírgula como separador decimal
     txt = txt.replace(",", ".")
-    return float(txt.replace(".", "", txt.count(".") - 1) or 0) # Trata . como separador de milhar
+    return float(txt.replace(".", "", txt.count(".") - 1) or 0) 
 
 def formatar_monetario(v):
-    # Formata para moeda brasileira R$ 1.000,00
     return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def aplicar_mascara_tel(raw):
@@ -183,13 +189,12 @@ def aplicar_mascara_tel(raw):
 
 
 # ==========================================================
-# GERAR PDF (INCLUI CHECKLIST E TIPO DOCUMENTO)
+# GERAR PDF (mantida)
 # ==========================================================
 
 def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagamento, checklist_str, tipo_documento, dias_garantia_num):
-    """Gera o documento PDF com tratamento robusto de erros."""
+    # Código da função gerar_documento (mantido inalterado)
     try:
-        # Cria a pasta se não existir, com tratamento de erro
         if not os.path.exists(PASTA_OS):
             try:
                 os.makedirs(PASTA_OS, exist_ok=True)
@@ -203,7 +208,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         messagebox.showerror("Erro", f"Erro ao verificar/criar pasta: {str(e)}")
         return None
 
-    # NOVO: Nome do arquivo dinâmico
     pdf_path = os.path.join(PASTA_OS, f"{tipo_documento}_{dados['numero'].split('-')[1]}.pdf")
 
     doc = SimpleDocTemplate(
@@ -218,7 +222,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
     styles = getSampleStyleSheet()
     normal = styles["Normal"]
 
-    # NOVO: Título dinâmico
     titulo_doc = "Ordem de Serviço" if tipo_documento == "OS" else "Comprovante de Venda"
 
     titulo = Paragraph(
@@ -236,7 +239,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
 
     story = [header, Spacer(1, 10)] 
 
-    # Função de bloco padrão
     def bloco(titulo, lista):
         story.append(Paragraph(
             f"<b>{titulo}</b>",
@@ -255,7 +257,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         story.append(tbl)
         story.append(Spacer(1, 4)) 
 
-    # Função para o bloco da Checklist (SÓ PARA OS)
     def bloco_checklist(titulo, checklist_str):
         story.append(Paragraph(
             f"<b>{titulo}</b>",
@@ -263,7 +264,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         ))
         
         rows = []
-        # Converte a string "Item:Sim;Item2:Não" para uma lista de tuplas
         itens = [item.split(':') for item in checklist_str.split(';') if item.strip()]
 
         NUM_COLUNAS = 3
@@ -314,7 +314,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         story.append(Spacer(1, 4)) 
 
 
-    # Dados
     bloco("Dados do Cliente", [
         (f"Número {tipo_documento}", dados["numero"]), 
         ("Cliente", dados["cliente"]),
@@ -322,7 +321,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         ("Data", dados["entrada"])
     ])
 
-    # NOVO: Bloco de Aparelho/Produto condicional
     if tipo_documento == "OS":
         bloco("Aparelho", [
             ("Modelo", dados["modelo"]),
@@ -331,22 +329,19 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
             ("Senha/Padrão", dados["senha"])
         ])
         
-        # Chamada para o bloco da Checklist
         bloco_checklist("Lista de Checagem do Aparelho", checklist_str)
         
         problema_titulo = "Problemas / Detalhe"
     
-    else: # VENDA
-        # No caso de venda, o "modelo" é o nome do produto e "problemas" é a descrição
+    else: 
         bloco("Produto Vendido", [
-            ("Produto", dados["modelo"]), # Aqui é o nome do produto
-            ("Detalhes", dados["acessorios"]) # Aqui é a descrição/detalhes da venda
+            ("Produto", dados["modelo"]), 
+            ("Detalhes", dados["acessorios"]) 
         ])
         
         problema_titulo = "Detalhe (Venda)"
 
 
-    # Bloco de serviço ou venda
     bloco(titulo_doc, [ 
         (problema_titulo, dados["problemas"] if tipo_documento == "OS" else "Ver Produto Vendido"), 
         ("Situação" if tipo_documento == "OS" else "Status", dados["situacao"]),
@@ -358,38 +353,32 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         ("Tipo de Garantia", tipo_garantia) 
     ])
 
-    # ---------------------------------------------------------
-    # TERMO DE GARANTIA (LÓGICA CORRIGIDA E REVISADA)
-    # ---------------------------------------------------------
-    
     AVISO_PAGAMENTO = "NÃO SERÁ ENTREGUE O APARELHO/PRODUTO SEM ANTES ACERTAR O PAGAMENTO. "
     dias_garantia_texto = f"{dias_garantia_num} dias" if dias_garantia_num > 0 else "legal"
     termo_texto = ""
     
     if tipo_documento == "OS":
-        # TERMOS PARA ORDEM DE SERVIÇO (mantidos como anteriormente)
         if tipo_garantia == "Com Garantia":
             termo_texto = (
                 f"<font size='8'><b>{AVISO_PAGAMENTO}</b> A garantia cobre exclusivamente o **serviço** realizado pelo período de **{dias_garantia_texto}** informado nesta OS. "
                 "Não cobre danos causados por mau uso, queda, oxidação, danos líquidos, tela quebrada ou violação do lacre. "
                 "O aparelho deve ser retirado em até 90 dias após a conclusão do serviço.</font>"
             )
-        else: # Sem Garantia
+        else: 
             termo_texto = (
                 f"<font size='8'><b>{AVISO_PAGAMENTO} SERVIÇO NÃO COBERTO POR GARANTIA!</b> O cliente está ciente de que o serviço realizado "
                 "não possui cobertura de garantia devido à natureza do reparo/peça ou condição do aparelho. "
                 "O aparelho deve ser retirado em até 90 dias após a conclusão do serviço.</font>"
             )
             
-    else: # VENDA
-        # TERMOS PARA VENDA DE PRODUTO (conforme sua solicitação)
+    else: 
         if tipo_garantia == "Com Garantia":
             termo_texto = (
                 f"<font size='8'><b>{AVISO_PAGAMENTO}</b> A garantia de **{dias_garantia_texto}** cobre somente se o produto apresentar "
                 "problemas de fábrica e estiver com a caixa do mesmo. "
                 "A garantia **NÃO COBRE** danos por mau uso, queda, oxidação, danos líquidos ou remoção de selos de garantia.</font>"
             )
-        else: # Sem Garantia
+        else: 
             termo_texto = (
                 f"<font size='8'><b>{AVISO_PAGAMENTO} PRODUTO VENDIDO SEM GARANTIA!</b> O cliente está ciente de que este produto "
                 "não possui cobertura de garantia.</font>"
@@ -401,10 +390,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
     story.append(Spacer(1, 3)) 
     story.append(termo)
     story.append(Spacer(1, 3)) 
-
-    # ---------------------------------------------------------
-    # Assinaturas
-    # ---------------------------------------------------------
 
     assinatura_tbl = Table([
         ["__________________________________", "__________________________________"],
@@ -421,8 +406,6 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
     story.append(assinatura_tbl)
     story.append(Spacer(1, 3))
 
-
-    # Borda + marca d’água
     def desenhar_borda(canvas, doc):
         canvas.saveState()
         W, H = A4
@@ -447,32 +430,37 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
 
 
 # ==========================================================
-# INTERFACE TKINTER - LÓGICA DINÂMICA E CORREÇÃO DO KEYERROR
+# INTERFACE CUSTOMTKINTER
 # ==========================================================
 
 class SistemaOS:
 
     def __init__(self, master):
+        # Master agora é um ctk.CTk()
         master.title("DIPCELL - Sistema de OS/Vendas")
-        master.configure(bg="#1e1e1e")
         
-        # ... (Configuração de tema e estilos omitida para brevidade, mas deve ser mantida) ...
+        # O CustomTkinter gerencia a cor de fundo globalmente
+        
+        # Configuração do estilo da Treeview (necessária, pois CTk não a substitui)
         style = ttk.Style()
         style.theme_use('clam') 
-        COR_VERDE_ESCURO = '#2E8B57' 
-        COR_VERDE_ATIVO = '#226C41'
-        style.configure('Custom.TButton', font=('Arial', 10, 'bold'), background=COR_VERDE_ESCURO, foreground='white', borderwidth=0, relief='flat', padding=10) 
-        style.map('Custom.TButton', background=[('active', COR_VERDE_ATIVO), ('pressed', COR_VERDE_ATIVO)], foreground=[('active', 'white'), ('pressed', 'white')])
-        style.configure('TFrame', background='#1e1e1e')
-        style.configure('TLabel', background='#1e1e1e', foreground='white')
-        style.configure("Treeview", background="#2c2c2c", foreground="white", fieldbackground="#2c2c2c", rowheight=25, font=('Arial', 10))
-        style.map('Treeview', background=[('selected', COR_VERDE_ATIVO)]) 
-        style.configure("Treeview.Heading", font=('Arial', 11, 'bold'), background="#3c3c3c", foreground="white")
-        style.configure("TCheckbutton", background="#1e1e1e", foreground='white', indicatorcolor='white', font=('Arial', 10))
-        style.map("TCheckbutton", background=[('active', '#1e1e1e')], foreground=[('active', 'white')])
+        # Cores para a Treeview em modo escuro
+        style.configure("Treeview", 
+                        background="#2c2c2c", 
+                        foreground="white", 
+                        fieldbackground="#2c2c2c", 
+                        rowheight=25, 
+                        font=('Arial', 10))
+        # O tema "green" do CTk cuida do highlight, mas reforçamos o fundo
+        style.map('Treeview', background=[('selected', COR_VERDE_PRINCIPAL)]) 
+        style.configure("Treeview.Heading", 
+                        font=('Arial', 11, 'bold'), 
+                        background="#3c3c3c", 
+                        foreground="white")
         # ----------------------------------------------------
 
-        self.container = Frame(master, bg="#1e1e1e")
+        # Container principal agora é um CTkFrame, usando fg_color="transparent" para se misturar ao root
+        self.container = ctk.CTkFrame(master, fg_color="transparent")
         self.container.grid(row=0, column=0, sticky="nsew") 
 
         master.grid_rowconfigure(0, weight=1)
@@ -482,9 +470,8 @@ class SistemaOS:
 
         self.frames = {}
         
-        # Inicializa variáveis de controle
-        self.tipo_documento_var = StringVar(value="OS") 
-        self.dias_garantia_var = StringVar(value="90 Dias") # VARIÁVEL REINTEGRADA
+        self.tipo_documento_var = tk.StringVar(value="OS") 
+        self.dias_garantia_var = tk.StringVar(value="90 Dias") 
         
         self.criar_tela_preenchimento(self.container)
         self.criar_tela_lista(self.container)
@@ -492,7 +479,7 @@ class SistemaOS:
         self.show_frame("Preenchimento")
         self.gerar_numero_documento() 
         
-    # Funções de numeração separadas
+    # Funções de numeração (mantidas)
     def gerar_numero_os(self):
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
@@ -522,17 +509,20 @@ class SistemaOS:
             self.carregar_dados_lista() 
 
     def criar_tela_preenchimento(self, parent):
-        f = Frame(parent, bg="#1e1e1e")
+        # Substitui Frame por CTkFrame
+        f = ctk.CTkFrame(parent, fg_color="transparent")
         self.frames["Preenchimento"] = f
         f.grid(row=0, column=0, sticky="nsew")
 
-        center_frame = Frame(f, bg="#1e1e1e")
-        center_frame.place(relx=0.5, rely=0.5, anchor=CENTER) 
+        # center_frame agora é CTkFrame
+        center_frame = ctk.CTkFrame(f, fg_color="transparent")
+        center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER) 
         
         self.vint = f.register(lambda v: v.isdigit() or v == "")
         self.vmoney = f.register(lambda v: all(ch in "0123456789,." for ch in v) and v.count(',') <= 1) 
         self.campos = {}
-        self.tel_var = StringVar() 
+        self.tel_var = tk.StringVar() 
+        self.botoes_preenchimento = []
 
         def aplicar_e_mostrar_mascara(event):
             raw_text = self.tel_var.get()
@@ -543,19 +533,17 @@ class SistemaOS:
             else:
                 self.tel_var.set(nums_only) 
         
-        # NOVO: Função para controlar o Combobox Dias de Garantia (REINTEGRADA)
         def on_tipo_garantia_change(event):
-            """Habilita/Desabilita o seletor de dias de garantia."""
+            # Acessa o CTkComboBox pelo nome do campo
+            combo_dias = self.campos["dias_garantia"]
             if self.campos["tipo_garantia"].get() == "Com Garantia":
-                self.campos["dias_garantia"].config(state="readonly")
+                combo_dias.configure(state="readonly")
                 if not self.dias_garantia_var.get():
-                     self.dias_garantia_var.set("90 Dias") # Default
+                     self.dias_garantia_var.set("90 Dias")
             else:
-                self.campos["dias_garantia"].config(state="disabled")
+                combo_dias.configure(state="disabled")
                 self.dias_garantia_var.set("")
-        # -----------------------------------------------------------
         
-        # NOVO: Função para alternar entre OS e VENDA
         def alternar_tipo_documento(event=None):
             self.limpar()
             self.gerar_numero_documento()
@@ -563,20 +551,17 @@ class SistemaOS:
             
             is_os = (tipo == "OS")
             
-            # 1. Ajustar os rótulos dinâmicos
-            self.campos["modelo_label"].config(text="Modelo*" if is_os else "Produto*")
-            self.campos["acessorios_label"].config(text="Acessórios" if is_os else "Detalhes da Venda")
+            self.campos["modelo_label"].configure(text="Modelo*" if is_os else "Produto*")
+            self.campos["acessorios_label"].configure(text="Acessórios" if is_os else "Detalhes da Venda")
             
-            # Resetamos a situação para o padrão da OS/Venda
+            situacao_combo = self.campos["situacao"]
             if is_os:
-                self.campos["situacao"].current(0) # EM ABERTO
+                situacao_combo.set("EM ABERTO") 
             else:
-                self.campos["situacao"].current(2) # CONCLUÍDA
+                situacao_combo.set("CONCLUÍDA")
 
-            # 2. Widgets de OS (2 Colunas: IMEI, Senha, Acessórios)
-            os_fields_2col = ["imei", "senha", "acessorios"]
+            os_fields_2col = ["imei", "senha"]
             
-            # Informações dos campos para reposicionamento
             campos_info = [
                 ("Cliente*", "cliente"), ("Modelo*", "modelo"),
                 ("Telefone*", "telefone"), ("IMEI", "imei"),
@@ -585,21 +570,18 @@ class SistemaOS:
                 ("Valor (R$)*", "valor"), ("Situacao*", "situacao")
             ]
             
-            # Reposiciona ou esconde os campos de IMEI e Senha (visíveis apenas na OS)
+            # Reposiciona ou esconde os campos de IMEI e Senha
             for key in os_fields_2col:
-                
+                    
                 label_widget = self.campos[f"{key}_label"]
                 entry_widget = self.campos[key]
-                
-                if key == "acessorios":
-                    continue # Acessórios apenas muda o rótulo
                     
                 info = next((item for i, item in enumerate(campos_info) if item[1] == key), None)
                 if info:
                     index = campos_info.index(info)
                     row = index // 2
                     col = (index % 2) * 2
-                    
+                        
                     if is_os:
                         label_widget.grid(row=row, column=col, sticky="w", padx=10, pady=(5, 0))
                         entry_widget.grid(row=row, column=col + 1, sticky="ew", padx=10, pady=(0, 5))
@@ -607,41 +589,59 @@ class SistemaOS:
                         label_widget.grid_forget()
                         entry_widget.grid_forget()
 
-            # 3. Widgets de OS (Largura Total: Checklist e Detalhe Adicional)
-            problemas_row_start = len(campos_info) // 2 # Linha onde o campo dias_garantia está
-            problemas_row_end = problemas_row_start + 1 + 7 # Linha onde o detalhe adicional começa
-                    
-            if is_os:
-                self.checklist_frame.grid(row=problemas_row_start + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(15, 5))
-                self.campos["problemas_detalhe_label"].grid(row=problemas_row_end + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
-                self.campos["problemas_detalhe"].grid(row=problemas_row_end + 2, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 10))
-            else:
-                self.checklist_frame.grid_forget()
-                self.campos["problemas_detalhe_label"].grid_forget()
-                self.campos["problemas_detalhe"].grid_forget()
-
-
-        # Logo
+        # Logo (Usa tk.Label pois a imagem é PIL.ImageTk)
         if os.path.exists(LOGO_PADRAO):
-            l = ImageTk.PhotoImage(PILImage.open(LOGO_PADRAO).resize((120, 120))) 
-            Label(center_frame, image=l, bg="#1e1e1e").pack(pady=(0, 10)) 
-            self.logo = l
-            
-        # NOVO: Seleção OS/VENDA
-        tipo_doc_frame = Frame(center_frame, bg="#1e1e1e")
+            try:
+                l = ImageTk.PhotoImage(PILImage.open(LOGO_PADRAO).resize((120, 120)))
+                
+                # --- CORREÇÃO ROBUSTA DA COR DE FUNDO PARA RESOLVER O ERRO DE ÍNDICE ---
+                app_mode = ctk.get_appearance_mode().lower() # 'dark' ou 'light'
+                bg_color_data = ctk.ThemeManager.theme["CTk"]["fg_color"]
+                current_bg_color = None
+
+                # Tenta obter a cor de fundo, tratando lista/tupla ou dicionário
+                if isinstance(bg_color_data, dict):
+                    # Ex: {"dark": "#242424", "light": "#F0F0F0"}
+                    current_bg_color = bg_color_data.get(app_mode)
+                elif isinstance(bg_color_data, (list, tuple)) and len(bg_color_data) == 2:
+                    # Ex: ["#F0F0F0", "#242424"] (Índice 0: Light, Índice 1: Dark)
+                    index = 0 if app_mode == "light" else 1
+                    current_bg_color = bg_color_data[index]
+                
+                # Se a cor obtida for uma tupla de cores (ex: ['#343638', '#343638']), extrai a cor base
+                if isinstance(current_bg_color, (list, tuple)) and len(current_bg_color) >= 1:
+                    index = 0 if app_mode == "light" else 1
+                    current_bg_color = current_bg_color[index]
+                    
+                # Fallback seguro caso a cor ainda seja None ou não-string
+                if not isinstance(current_bg_color, str) or not current_bg_color:
+                    current_bg_color = "#242424" if app_mode == "dark" else "#F0F0F0"
+                
+                # Usa a cor obtida com o argumento 'bg' do tk.Label
+                tk.Label(center_frame, image=l, bg=current_bg_color, relief="flat").pack(pady=(0, 10))
+                self.logo = l
+                # ----------------------------------------------------------------------------------
+            except Exception as e:
+                print(f"Aviso: Não foi possível carregar a logo ou aplicar a cor de fundo: {e}")
+                pass
+
+
+        # Seleção OS/VENDA
+        tipo_doc_frame = ctk.CTkFrame(center_frame, fg_color="transparent")
         tipo_doc_frame.pack(pady=5)
-        Label(tipo_doc_frame, text="Tipo de Documento:", fg="white", bg="#1e1e1e").pack(side=LEFT, padx=5)
-        
-        cb_tipo_doc = ttk.Combobox(tipo_doc_frame, width=20, state="readonly",
-                                 values=["OS", "VENDA"], textvariable=self.tipo_documento_var)
-        cb_tipo_doc.current(0)
-        cb_tipo_doc.bind("<<ComboboxSelected>>", alternar_tipo_documento)
-        cb_tipo_doc.pack(side=LEFT)
-        
-        
-        # Frame dos campos (Organização em GRIDS/2 COLUNAS)
-        campo_frame = Frame(center_frame, bg="#1e1e1e") 
-        campo_frame.pack(pady=10, padx=20) 
+        ctk.CTkLabel(tipo_doc_frame, text="Tipo de Documento:").pack(side=tk.LEFT, padx=5)
+        # Substitui ttk.Combobox por CTkComboBox
+        cb_tipo_doc = ctk.CTkComboBox(tipo_doc_frame, 
+                                     width=200, 
+                                     values=["OS", "VENDA"], 
+                                     command=alternar_tipo_documento,
+                                     variable=self.tipo_documento_var)
+        cb_tipo_doc.set("OS")
+        cb_tipo_doc.pack(side=tk.LEFT)
+
+        # Frame dos campos 
+        campo_frame = ctk.CTkFrame(center_frame, fg_color="transparent")
+        campo_frame.pack(pady=10, padx=20)
 
         campos_info = [
             ("Cliente*", "cliente"), ("Modelo*", "modelo"),
@@ -651,609 +651,536 @@ class SistemaOS:
             ("Valor (R$)*", "valor"), ("Situacao*", "situacao")
         ]
 
-        W_ENTRY = 28 
-        W_COMBO = 28 
-
+        W_ENTRY = 200 # CTk usa pixels, ajustamos o tamanho
+        COMBO_VALORES = {
+            "situacao": ["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA"],
+            "tipo_garantia": ["Com Garantia", "Sem Garantia"],
+            "metodo_pagamento": ["CARTÃO", "DINHEIRO", "PIX"],
+        }
+        
         for i, (label, key) in enumerate(campos_info):
             row = i // 2
             col = (i % 2) * 2
-            
-            # Label
-            l = Label(campo_frame, text=label, fg="white", bg="#1e1e1e", anchor="w", name=f"{key}_label")
+
+            # Label (CTkLabel)
+            l = ctk.CTkLabel(campo_frame, text=label, anchor="w")
             l.grid(row=row, column=col, sticky="w", padx=10, pady=(5, 0))
-            self.campos[f"{key}_label"] = l 
+            self.campos[f"{key}_label"] = l
 
-            # Entrada
-            if key == "telefone":
-                e = Entry(campo_frame, width=W_ENTRY, validate="key", validatecommand=(self.vint, "%P"), textvariable=self.tel_var, name=key)
-                e.bind("<FocusOut>", aplicar_e_mostrar_mascara) 
-            elif key in ("imei",):
-                e = Entry(campo_frame, width=W_ENTRY, validate="key", validatecommand=(self.vint, "%P"), name=key)
-            elif key == "valor":
-                e = Entry(campo_frame, width=W_ENTRY, validate="key", validatecommand=(self.vmoney, "%P"), name=key)
-            elif key == "situacao":
-                e = ttk.Combobox(campo_frame, width=W_COMBO-2, state="readonly", name=key,
-                                 values=["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA"])
-                e.current(0)
-            elif key == "tipo_garantia":
-                e = ttk.Combobox(campo_frame, width=W_COMBO-2, state="readonly", name=key,
-                                 values=["Com Garantia", "Sem Garantia"])
-                e.current(0)
-                e.bind("<<ComboboxSelected>>", on_tipo_garantia_change) # Bind REINTEGRADO
-            elif key == "metodo_pagamento":
-                e = ttk.Combobox(campo_frame, width=W_COMBO-2, state="readonly", name=key,
-                                 values=["CARTÃO", "DINHEIRO", "PIX"])
-                e.current(0) 
+            # Entrada (CTkEntry ou CTkComboBox)
+            if key in COMBO_VALORES:
+                e = ctk.CTkComboBox(campo_frame, 
+                                    width=W_ENTRY, 
+                                    values=COMBO_VALORES[key], 
+                                    state="readonly")
+                e.set(COMBO_VALORES[key][0]) # Define o valor inicial
+                
+                if key == "tipo_garantia":
+                    e.configure(command=on_tipo_garantia_change)
+            
             else:
-                e = Entry(campo_frame, width=W_ENTRY, name=key)
-
+                e = ctk.CTkEntry(campo_frame, width=W_ENTRY)
+                
+                if key == "telefone":
+                    e.configure(validate="key", validatecommand=(self.vint, "%P"), textvariable=self.tel_var)
+                    e.bind("<FocusOut>", aplicar_e_mostrar_mascara)
+                elif key == "imei":
+                    e.configure(validate="key", validatecommand=(self.vint, "%P"))
+                elif key == "valor":
+                    e.configure(validate="key", validatecommand=(self.vmoney, "%P"))
+                    e.insert(0, "0,00") # Valor inicial
+            
             e.grid(row=row, column=col + 1, sticky="ew", padx=10, pady=(0, 5))
             self.campos[key] = e
-            
-        # NOVO CAMPO: Dias de Garantia (REINTEGRADO)
-        # Deve ficar logo abaixo de Situação
-        dias_row = len(campos_info) // 2 
+
+        # Dias de Garantia
+        dias_row = len(campos_info) // 2
+        l_dias = ctk.CTkLabel(campo_frame, text="Dias de Garantia*", anchor="w")
+        l_dias.grid(row=dias_row, column=2, sticky="w", padx=10, pady=(5, 0))
+        self.campos["dias_garantia_label"] = l_dias
         
-        l_dias = Label(campo_frame, text="Dias de Garantia*", fg="white", bg="#1e1e1e", anchor="w", name="dias_garantia_label")
-        l_dias.grid(row=dias_row, column=2, sticky="w", padx=10, pady=(5, 0)) # Coluna 2 (lado direito)
-        self.campos["dias_garantia_label"] = l_dias # Salva o Label
-        
-        e_dias = ttk.Combobox(campo_frame, width=W_COMBO-2, state="readonly", name="dias_garantia",
-                              values=["30 Dias", "90 Dias"], textvariable=self.dias_garantia_var)
-        e_dias.current(1) # Default 90
-        e_dias.grid(row=dias_row, column=3, sticky="ew", padx=10, pady=(0, 5)) # Coluna 3
+        e_dias = ctk.CTkComboBox(campo_frame, 
+                                 width=W_ENTRY, 
+                                 state="readonly", 
+                                 values=["30 Dias", "90 Dias"], 
+                                 variable=self.dias_garantia_var)
+        e_dias.set("90 Dias")
+        e_dias.grid(row=dias_row, column=3, sticky="ew", padx=10, pady=(0, 5))
         self.campos["dias_garantia"] = e_dias
-        on_tipo_garantia_change(None) # Define o estado inicial
+        on_tipo_garantia_change(None) 
 
-        # ---------------------------------------------------------
         # --- SEÇÃO CHECKLIST & DETALHE ---
-        # ---------------------------------------------------------
         
-        problemas_row_start = len(campos_info) // 2 
+        problemas_row_start = len(campos_info) // 2
         
-        self.checklist_frame = Frame(campo_frame, bg="#1e1e1e")
-        # Colocado na linha debaixo para não conflitar com Dias de Garantia
-        self.checklist_frame.grid(row=problemas_row_start + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(15, 5)) 
+        self.checklist_frame = ctk.CTkFrame(campo_frame, fg_color="transparent") 
+        self.checklist_frame.grid(row=problemas_row_start + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(15, 5))
+        ctk.CTkLabel(self.checklist_frame, text="CHECKLIST (PROBLEMAS/STATUS)", font=('Arial', 10, 'bold')).pack(anchor="w")
         
-        Label(self.checklist_frame, text="CHECKLIST (PROBLEMAS/STATUS)", fg="white", bg="#1e1e1e", font=('Arial', 10, 'bold')).pack(anchor="w")
-
         self.checklist_vars = {}
         checklist_itens = [
-            "Tela Display", "Touch Screen", "Teclas", "Sensores de Proximidade",
-            "Bluetooth", "Wi-Fi", "Ligações", "Alto Falante",
-            "Câmera", "Microfone", "Conector Carregador", "Conector Cartão de Memória",
+            "Tela Display", "Touch Screen", "Teclas", "Sensores de Proximidade", 
+            "Bluetooth", "Wi-Fi", "Ligações", "Alto Falante", 
+            "Câmera", "Microfone", "Conector Carregador", "Conector Cartão de Memória", 
             "Sim Card", "Outros (Opcional - p/ defeitos internos)"
         ]
-        
+
         # Frame interno para a checklist (organização em duas colunas)
-        chk_inner_frame = Frame(self.checklist_frame, bg="#1e1e1e")
+        chk_inner_frame = ctk.CTkFrame(self.checklist_frame, fg_color="transparent")
         chk_inner_frame.pack(fill="x")
         
         for i, item in enumerate(checklist_itens):
-            col = i // 7 
-            
-            var = StringVar(value="Não")
-            
-            chk = ttk.Checkbutton(chk_inner_frame, text=item, variable=var, 
-                              onvalue="Sim", offvalue="Não", style="TCheckbutton")
-                              
+            col = i // 7
+            var = tk.StringVar(value="Não")
+            # Substitui ttk.Checkbutton por CTkCheckBox
+            chk = ctk.CTkCheckBox(chk_inner_frame, 
+                                  text=item, 
+                                  variable=var, 
+                                  onvalue="Sim", 
+                                  offvalue="Não",
+                                  border_color=COR_VERDE_PRINCIPAL) # Mantém a cor da borda verde
             chk.grid(row=i%7, column=col, sticky="w", padx=10)
             self.checklist_vars[item] = var
-        
-        # --- CAMPO DETALHE ADICIONAL (PROBLEMAS/OUTROS) ---
-        
-        problemas_row_end = problemas_row_start + 1 + 7 
-        
-        l_detalhe = Label(campo_frame, text="Detalhe Adicional (Opcional):", fg="white", bg="#1e1e1e", name="problemas_detalhe_label")
-        # CORREÇÃO CRÍTICA DO KEYERROR: Adicionar o rótulo ao dicionário
-        self.campos["problemas_detalhe_label"] = l_detalhe 
-        l_detalhe.grid(row=problemas_row_end + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
 
-        e_detalhe = Entry(campo_frame, width=W_ENTRY * 2 + 10, name="problemas_detalhe") 
+        # --- CAMPO DETALHE ADICIONAL (PROBLEMAS/OUTROS) ---
+        problemas_row_end = problemas_row_start + 1 + 7
+        
+        l_detalhe = ctk.CTkLabel(campo_frame, text="Detalhe Adicional (Opcional):")
+        self.campos["problemas_detalhe_label"] = l_detalhe
+        l_detalhe.grid(row=problemas_row_end + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
+        
+        # Substitui RoundedEntry por CTkEntry
+        e_detalhe = ctk.CTkEntry(campo_frame, width=W_ENTRY * 2 + 30)
         e_detalhe.grid(row=problemas_row_end + 2, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 10))
         self.campos["problemas_detalhe"] = e_detalhe
         
         # --- FIM SEÇÃO CHECKLIST ---
 
-        fb = Frame(center_frame, bg="#1e1e1e")
+        fb = ctk.CTkFrame(center_frame, fg_color="transparent")
         fb.pack(pady=10)
-
-        # Botões com estilo verde Custom.TButton
-        ttk.Button(fb, text="Salvar Documento", width=20, command=self.salvar, style='Custom.TButton').grid(row=0, column=0, padx=6)
-        ttk.Button(fb, text="Limpar", width=20, command=self.limpar, style='Custom.TButton').grid(row=0, column=1, padx=6)
-        ttk.Button(fb, text="Lista de Docs", width=20, command=lambda: self.show_frame("Lista"), style='Custom.TButton').grid(row=0, column=2, padx=6)
         
-        # Garante que a tela inicia com os campos de OS visíveis (chamando a função)
+        # Substitui RoundedButton por CTkButton (automaticamente usa a cor de destaque verde)
+        
+        b_salvar = ctk.CTkButton(fb, text="Salvar Documento", width=180, command=self.salvar, 
+                                 fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_salvar.grid(row=0, column=0, padx=6)
+        self.botoes_preenchimento.append(b_salvar)
+        
+        b_limpar = ctk.CTkButton(fb, text="Limpar", width=180, command=self.limpar, 
+                                 fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_limpar.grid(row=0, column=1, padx=6)
+        self.botoes_preenchimento.append(b_limpar)
+        
+        b_lista = ctk.CTkButton(fb, text="Lista de Docs", width=180, command=lambda: self.show_frame("Lista"), 
+                                fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_lista.grid(row=0, column=2, padx=6)
+        self.botoes_preenchimento.append(b_lista)
+
         alternar_tipo_documento() 
 
 
     def criar_tela_lista(self, parent):
-        win = Frame(parent, bg="#1e1e1e")
-        self.frames["Lista"] = win
-        win.grid(row=0, column=0, sticky="nsew")
-
-        win.grid_rowconfigure(3, weight=1) 
-        win.grid_columnconfigure(0, weight=1)
-
-        # Botão Voltar
-        ttk.Button(win, text="<< Voltar ao Cadastro", command=lambda: self.show_frame("Preenchimento")).grid(row=0, column=0, sticky="w", padx=20, pady=10)
         
-        Label(win, text="LISTA DE DOCUMENTOS (OS/VENDAS)", fg="white", bg="#1e1e1e", font=("Arial", 16, "bold")).grid(row=1, column=0, pady=10)
-
-        # Frame de Busca
-        busca_frame = Frame(win, bg="#1e1e1e")
-        busca_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 10))
-        busca_frame.grid_columnconfigure(1, weight=1)
+        # Frame principal da Lista (CTkFrame)
+        f = ctk.CTkFrame(parent, fg_color="transparent")
+        self.frames["Lista"] = f
+        f.grid(row=0, column=0, sticky="nsew")
         
-        Label(busca_frame, text="Buscar por Número:", fg="white", bg="#1e1e1e", font=('Arial', 10)).grid(row=0, column=0, padx=(0, 10), sticky="w")
+        f.grid_rowconfigure(1, weight=1)
+        f.grid_columnconfigure(0, weight=1)
         
-        self.entry_busca = Entry(busca_frame, width=30, font=('Arial', 10))
-        self.entry_busca.grid(row=0, column=1, padx=5, sticky="ew")
-        self.entry_busca.bind("<KeyRelease>", self.filtrar_por_numero)
+        top_frame = ctk.CTkFrame(f, fg_color="transparent")
+        top_frame.pack(side="top", fill="x", padx=10, pady=10)
         
-        ttk.Button(busca_frame, text="Limpar", command=self.limpar_filtro, style='Custom.TButton', width=12).grid(row=0, column=2, padx=5)
-
-        cols = ("Tipo","Numero","Cliente","Modelo/Produto","Entrada","Saida","Garantia","Situacao","Arquivo")
-
-        tabela_frame = Frame(win)
-        tabela_frame.grid(row=3, column=0, sticky="nsew", padx=20, pady=10)
-
-        tabela_frame.grid_rowconfigure(0, weight=1)
-        tabela_frame.grid_columnconfigure(0, weight=1)
-
-        vsb = ttk.Scrollbar(tabela_frame, orient="vertical")
-        hsb = ttk.Scrollbar(tabela_frame, orient="horizontal")
-
-        self.tabela = ttk.Treeview(tabela_frame, columns=cols, show="headings", height=20, 
-                                   yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        # Título (CTkLabel)
+        ctk.CTkLabel(top_frame, text="Documentos Registrados", font=('Arial', 16, 'bold')).pack(side=tk.LEFT)
         
-        vsb.config(command=self.tabela.yview)
-        hsb.config(command=self.tabela.xview)
+        self.botoes_lista = []
         
-        vsb.pack(side="right", fill="y")
-        self.tabela.pack(side="left", fill="both", expand=True)
-        hsb.pack(side="bottom", fill="x")
+        # Botões CTk (VERDE)
+        b_novo_doc = ctk.CTkButton(top_frame, text="Novo Documento", width=150, command=lambda: self.show_frame("Preenchimento"), 
+                                   fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_novo_doc.pack(side=tk.RIGHT, padx=5)
+        self.botoes_lista.append(b_novo_doc)
+                     
+        b_atualizar_lista = ctk.CTkButton(top_frame, text="Atualizar Lista", width=120, command=self.carregar_dados_lista, 
+                                          fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_atualizar_lista.pack(side=tk.RIGHT, padx=5)
+        self.botoes_lista.append(b_atualizar_lista)
 
-        for c in cols:
-            self.tabela.heading(c, text=c)
-
-        control_frame = Frame(win, bg="#1e1e1e")
-        control_frame.grid(row=4, column=0, pady=10)
+        # Frame de Busca (CTkFrame)
+        search_frame = ctk.CTkFrame(f, fg_color="transparent")
+        search_frame.pack(side="top", fill="x", padx=10, pady=5)
         
-        # LINHA 0: ATUALIZAÇÃO DE SITUAÇÃO
-        Label(control_frame, text="Alterar Situação:", fg="white", bg="#1e1e1e").grid(row=0, column=0, padx=10, pady=5)
-        self.cb_situacao = ttk.Combobox(control_frame, values=["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA"],
-                          state="readonly", width=30)
-        self.cb_situacao.grid(row=0, column=1, padx=10, pady=5)
-        ttk.Button(control_frame, text="Atualizar Situação", command=self.atualizar_situacao, style='Custom.TButton').grid(row=0, column=2, padx=10, pady=5)
+        ctk.CTkLabel(search_frame, text="Buscar:").pack(side=tk.LEFT, padx=5)
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", lambda name, index, mode: self.carregar_dados_lista(search=self.search_var.get()))
         
-        # LINHA 1: ATUALIZAÇÃO DE PAGAMENTO
-        Label(control_frame, text="Alterar Pagamento:", fg="white", bg="#1e1e1e").grid(row=1, column=0, padx=10, pady=5)
-        self.cb_pagamento = ttk.Combobox(control_frame, values=["CARTÃO", "DINHEIRO", "PIX"],
-                          state="readonly", width=30)
-        self.cb_pagamento.grid(row=1, column=1, padx=10, pady=5)
-        self.cb_pagamento.current(0)
-        ttk.Button(control_frame, text="Atualizar Pagamento", command=self.atualizar_pagamento, style='Custom.TButton').grid(row=1, column=2, padx=10, pady=5)
-
-        # LINHA 2: ATUALIZAÇÃO DE VALOR
-        Label(control_frame, text="Novo Valor (R$):", fg="white", bg="#1e1e1e").grid(row=2, column=0, padx=10, pady=5)
+        # Entrada de busca (CTkEntry)
+        self.search_entry = ctk.CTkEntry(search_frame, width=200, textvariable=self.search_var)
+        self.search_entry.pack(side=tk.LEFT, fill="x", expand=True, padx=5)
         
-        vcmd_money = win.register(lambda v: all(ch in "0123456789,." for ch in v) and v.count(',') <= 1) 
-        self.entry_novo_valor = Entry(control_frame, width=33, validate="key", validatecommand=(vcmd_money, "%P")) 
-        self.entry_novo_valor.grid(row=2, column=1, padx=10, pady=5, sticky="ew")
-        ttk.Button(control_frame, text="Atualizar Valor", command=self.atualizar_valor, style='Custom.TButton').grid(row=2, column=2, padx=10, pady=5)
-
-        # Botão Abrir OS (PDF) - MAIOR
-        ttk.Button(control_frame, text="Abrir Documento (PDF)", command=self.abrir_pdf, style='Custom.TButton', width=20).grid(
-            row=0, column=3, padx=10, rowspan=3, sticky="nsew"
-        )
-
-    def carregar_dados_lista(self, filtro_numero=None):
-        self.tabela.delete(*self.tabela.get_children()) 
-
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
+        # Tabela (ttk.Treeview - mantida)
+        tree_frame = ctk.CTkFrame(f, fg_color="transparent")
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
-        if filtro_numero and filtro_numero.strip():
-            # Busca por número (case-insensitive e parcial)
-            c.execute("""
-                SELECT tipo_documento, numero, cliente, modelo, entrada, saida, garantia, situacao, arquivo 
-                FROM os 
-                WHERE numero LIKE ? 
-                ORDER BY id DESC
-            """, (f"%{filtro_numero.strip()}%",))
-        else:
-            c.execute("SELECT tipo_documento, numero, cliente, modelo, entrada, saida, garantia, situacao, arquivo FROM os ORDER BY id DESC") 
+        columns = ("Tipo", "Número", "Cliente", "Modelo/Produto", "Entrada", "Saída", "Garantia", "Situação", "Arquivo")
+        self.tabela = ttk.Treeview(tree_frame, columns=columns, show='headings')
         
-        for row in c.fetchall():
-            self.tabela.insert("", END, values=row)
-        conn.close()
+        # Configuração das colunas (mantida)
+        self.tabela.heading("Tipo", text="Tipo")
+        self.tabela.column("Tipo", width=50, anchor=tk.CENTER)
+        self.tabela.heading("Número", text="Número")
+        self.tabela.column("Número", width=80, anchor=tk.CENTER)
+        self.tabela.heading("Cliente", text="Cliente")
+        self.tabela.column("Cliente", width=150)
+        self.tabela.heading("Modelo/Produto", text="Modelo/Produto")
+        self.tabela.column("Modelo/Produto", width=150)
+        self.tabela.heading("Entrada", text="Entrada")
+        self.tabela.column("Entrada", width=80, anchor=tk.CENTER)
+        self.tabela.heading("Saída", text="Saída")
+        self.tabela.column("Saída", width=80, anchor=tk.CENTER)
+        self.tabela.heading("Garantia", text="Garantia")
+        self.tabela.column("Garantia", width=80, anchor=tk.CENTER)
+        self.tabela.heading("Situação", text="Situação")
+        self.tabela.column("Situação", width=100, anchor=tk.CENTER)
+        self.tabela.heading("Arquivo", text="Arquivo")
+        self.tabela.column("Arquivo", width=50, stretch=tk.NO) 
 
-    def filtrar_por_numero(self, event=None):
-        """Filtra a tabela pelo número digitado"""
-        texto_busca = self.entry_busca.get()
-        self.carregar_dados_lista(filtro_numero=texto_busca)
+        # Scrollbar (ttk.Scrollbar - mantida)
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tabela.yview)
+        self.tabela.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tabela.pack(fill="both", expand=True)
+        
+        # Frame de Ações (CTkFrame)
+        action_frame = ctk.CTkFrame(f, fg_color="transparent")
+        action_frame.pack(side="bottom", fill="x", padx=10, pady=5)
+        
+        # Botões de Ação (AGORA TODOS SÃO VERDES)
+        b_ver_pdf = ctk.CTkButton(action_frame, text="Ver PDF", width=150, command=self.abrir_pdf, 
+                                  fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_ver_pdf.pack(side=tk.LEFT, padx=5)
+        self.botoes_lista.append(b_ver_pdf)
+        
+        b_deletar = ctk.CTkButton(action_frame, text="Deletar", width=150, command=self.deletar, 
+                                  fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE) # Mudado para verde
+        b_deletar.pack(side=tk.LEFT, padx=5)
+        self.botoes_lista.append(b_deletar)
 
-    def limpar_filtro(self):
-        """Limpa o campo de busca e recarrega todos os dados"""
-        self.entry_busca.delete(0, END)
+        # Frame de Atualização de Valor (CTkFrame)
+        update_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        update_frame.pack(side=tk.RIGHT, padx=5)
+        
+        ctk.CTkLabel(update_frame, text="Novo Valor (R$):").pack(side=tk.LEFT, padx=5)
+        # Entrada de Novo Valor (CTkEntry)
+        self.entry_novo_valor = ctk.CTkEntry(update_frame, width=150)
+        self.entry_novo_valor.pack(side=tk.LEFT, padx=5)
+        
+        # Botão Atualizar Valor/Regerar PDF (VERDE)
+        b_atualizar_valor = ctk.CTkButton(update_frame, text="Atualizar Valor/Regerar PDF", width=180, command=self.atualizar_valor_os, 
+                                          fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_atualizar_valor.pack(side=tk.LEFT, padx=5)
+        self.botoes_lista.append(b_atualizar_valor)
+        
         self.carregar_dados_lista()
 
 
-    def salvar(self):
-        tipo_documento = self.tipo_documento_var.get()
-        
-        dados = {
-            "numero": self.numero_documento, 
-            "entrada": datetime.now().strftime("%d/%m/%Y"),
-            "saida": "--",
-            "garantia": "--",
-            "tipo_documento": tipo_documento, 
-            "dias_garantia": 0 # Inicializa
-        }
-
-        # 1. VALIDAÇÃO E EXTRAÇÃO DOS CAMPOS
-        campos_obrigatorios = {
-            "cliente": "Cliente", "telefone": "Telefone", "modelo": "Modelo/Produto", 
-            "situacao": "Situação", "tipo_garantia": "Tipo de Garantia", 
-            "metodo_pagamento": "Método de Pagamento", "valor": "Valor (R$)"
-        }
-        
-        for key, nome in campos_obrigatorios.items():
-            if key == "telefone":
-                txt = self.tel_var.get().strip()
-                nums_only = "".join(ch for ch in txt if ch.isdigit())
-                if len(nums_only) < 10:
-                     messagebox.showerror("Erro", "Campo 'Telefone' inválido ou incompleto (Mínimo 10 dígitos).")
-                     return
-                dados[key] = txt 
-                continue
-
-            txt = self.campos[key].get().strip()
-            
-            if txt == "":
-                messagebox.showerror("Erro", f"Campo '{nome}' obrigatório.")
-                return
-            
-            if key == "valor":
-                try:
-                    valor_float = parse_monetario_to_float(txt)
-                    dados[key] = formatar_monetario(valor_float)
-                except ValueError:
-                    messagebox.showerror("Erro", "Formato de Valor inválido.")
-                    return
-            else:
-                dados[key] = txt
-                
-        # TRATAMENTO DO CAMPO DIAS DE GARANTIA (REINTEGRADO)
-        if dados["tipo_garantia"] == "Com Garantia":
-             dias_garantia_txt = self.dias_garantia_var.get().strip()
-             if not dias_garantia_txt or "Dias" not in dias_garantia_txt:
-                 messagebox.showerror("Erro", "Selecione a quantidade de dias de garantia (30 ou 90).")
-                 return
-             dados["dias_garantia"] = int(dias_garantia_txt.split(' ')[0]) # Salva o número
-
-        # 2. TRATAMENTO DOS CAMPOS ESPECÍFICOS (OS/VENDA)
-        if tipo_documento == "OS":
-            detalhe_problemas = self.campos["problemas_detalhe"].get().strip()
-            dados["problemas"] = detalhe_problemas if detalhe_problemas else "Conforme Checklist"
-            
-            checklist_data = [f"{item}:{var.get()}" for item, var in self.checklist_vars.items()]
-            dados["checklist"] = ";".join(checklist_data)
-            
-            dados["acessorios"] = self.campos["acessorios"].get().strip() or "N/A"
-            dados["imei"] = self.campos["imei"].get().strip() or "N/A"
-            dados["senha"] = self.campos["senha"].get().strip() or "N/A"
-
-        else: # VENDA
-            # VENDA: Problemas é o detalhe da venda, checklist/imei/senha são vazios.
-            dados["imei"] = "N/A"
-            dados["senha"] = "N/A"
-            dados["problemas"] = "Venda de Produto" 
-            dados["checklist"] = "" 
-            
-            # O campo 'acessorios' (da OS) é usado para 'Detalhes da Venda'
-            dados["acessorios"] = self.campos["acessorios"].get().strip() or "Sem detalhes adicionais"
-            
-            # Situação de Venda deve ser CONCLUÍDA
-            dados["situacao"] = "CONCLUÍDA"
-
-        # 3. CÁLCULO DE SAÍDA E GARANTIA
-        if dados["situacao"] == "CONCLUÍDA":
-            dados["saida"] = datetime.now().strftime("%d/%m/%Y")
-            
-            if dados["tipo_garantia"] == "Com Garantia":
-                dias = dados["dias_garantia"]
-                dados["garantia"] = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-            else:
-                # Sem Garantia: OS = --, VENDA = 30 dias (legal, se aplicável, mas aqui tratamos como "Sem Garantia")
-                if tipo_documento == "OS":
-                    dados["garantia"] = "--"
-                else: 
-                    # Para Vendas Sem Garantia, o termo informa que não há cobertura. Mantém "--" na data.
-                    dados["garantia"] = "--" 
-        # --------------------------------------------------------------------
-
-        # 4. GERAÇÃO DO PDF E SALVAMENTO
-        total = valor_float 
-
-        pdf_path = gerar_documento(
-            dados, dados["valor"], total, dados["tipo_garantia"], dados["metodo_pagamento"], dados["checklist"], tipo_documento, dados["dias_garantia"]
-        )
-        
-        # Verifica se o PDF foi gerado com sucesso
-        if not pdf_path:
-            messagebox.showerror("Erro", "Não foi possível gerar o PDF. Operação cancelada.")
-            return
-        
-        dados["arquivo"] = pdf_path
-
-        try:
-            conn = sqlite3.connect(DB_NAME)
-            c = conn.cursor()
-
-            # O comando SQL AGORA TEM 19 CAMPOS (incluindo dias_garantia e tipo_documento)
-            c.execute("""
-                INSERT INTO os (
-                    numero, cliente, telefone, modelo, imei, senha, acessorios,
-                    problemas, situacao, valor, entrada, saida, garantia, arquivo, 
-                    tipo_garantia, metodo_pagamento, checklist, dias_garantia, tipo_documento
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                dados["numero"], dados["cliente"], dados["telefone"], dados["modelo"],
-                dados["imei"], dados["senha"], dados["acessorios"], dados["problemas"], 
-                dados["situacao"], dados["valor"], dados["entrada"],
-                dados["saida"], dados["garantia"], dados["arquivo"], 
-                dados["tipo_garantia"], dados["metodo_pagamento"], dados["checklist"],
-                dados["dias_garantia"], dados["tipo_documento"]
-            ))
-
-            conn.commit()
-            conn.close()
-
-            messagebox.showinfo("OK", f"{tipo_documento} salva com sucesso!")
-            self.limpar()
-            self.gerar_numero_documento()
-        except sqlite3.Error as e:
-            messagebox.showerror("Erro ao Salvar", 
-                f"Erro ao salvar no banco de dados:\n{str(e)}\n\n"
-                f"O PDF foi gerado, mas os dados não foram salvos.")
-        except Exception as e:
-            messagebox.showerror("Erro Inesperado", 
-                f"Erro inesperado ao salvar:\n{str(e)}") 
-
     def limpar(self):
-        # 1. Salvar o valor atual do tipo de documento antes de limpar TUDO
-        tipo_doc_salvo = self.tipo_documento_var.get()
+        # Limpar CTkEntry
+        self.campos["cliente"].delete(0, tk.END)
+        self.campos["telefone"].delete(0, tk.END)
+        self.campos["modelo"].delete(0, tk.END)
+        self.campos["imei"].delete(0, tk.END)
+        self.campos["senha"].delete(0, tk.END)
+        self.campos["acessorios"].delete(0, tk.END)
+        self.campos["valor"].delete(0, tk.END)
+        self.campos["valor"].insert(0, "0,00")
+        self.campos["problemas_detalhe"].delete(0, tk.END) 
+        
+        # Limpar CTkComboBox
+        self.campos["situacao"].set("EM ABERTO")
+        self.campos["tipo_garantia"].set("Com Garantia")
+        self.campos["metodo_pagamento"].set("CARTÃO")
+        self.campos["dias_garantia"].set("90 Dias") 
+        self.dias_garantia_var.set("90 Dias") 
 
-        for key, e in self.campos.items():
-            if hasattr(e, 'delete'):
-                e.delete(0, END)
-            if key in ("situacao", "tipo_garantia", "metodo_pagamento") and hasattr(e, 'current'):
-                e.current(0)
-            
-        self.tel_var.set("")
-        
-        # 2. Restaurar o valor do tipo de documento
-        self.tipo_documento_var.set(tipo_doc_salvo) 
-        self.dias_garantia_var.set("90 Dias")
-        
-        # Aplicar o estado inicial da garantia
-        if "tipo_garantia" in self.campos and "dias_garantia" in self.campos:
-            self.campos["tipo_garantia"].current(0)
-            self.campos["dias_garantia"].config(state="readonly")
-        
+        # Limpar checklist (CTkCheckBox)
         for var in self.checklist_vars.values():
             var.set("Não")
 
+        self.gerar_numero_documento()
+        self.campos["dias_garantia"].configure(state="readonly") 
 
-    def atualizar_situacao(self):
-        item = self.tabela.focus()
-        if not item:
-            messagebox.showerror("Erro", "Selecione um Documento!")
-            return
-
-        nova = self.cb_situacao.get()
-        if not nova:
-            messagebox.showerror("Erro", "Selecione a nova situação!")
-            return
-            
-        valores = self.tabela.item(item)["values"]
-        tipo_documento = valores[0] 
-        numero = valores[1] 
-
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-
-        # Seleciona todos os campos necessários para regenerar o PDF
-        c.execute("""
-            SELECT cliente, telefone, modelo, imei, senha, acessorios, problemas, valor, 
-                   entrada, tipo_garantia, metodo_pagamento, checklist, dias_garantia
-            FROM os WHERE numero=? AND tipo_documento=?
-        """, (numero, tipo_documento))
-        row = c.fetchone()
+    
+    def salvar(self):
+        # ... (Mantido)
+        # 1. Coleta e validação de dados
+        cliente = self.campos["cliente"].get().strip()
+        telefone = self.campos["telefone"].get().strip()
+        modelo = self.campos["modelo"].get().strip()
+        valor_str = self.campos["valor"].get().strip()
         
-        # Garante que row existe
-        if not row:
-            conn.close()
-            messagebox.showerror("Erro", "Documento não encontrado no banco de dados.")
-            return
-
-        tipo_garantia_db = row[9] 
-        metodo_pagamento_db = row[10] 
-        checklist_db = row[11] 
-        dias_garantia_db = row[12] # Campo reintegrado
-
-        if nova == "CONCLUÍDA":
-            saida = datetime.now().strftime("%d/%m/%Y")
-            
-            if tipo_garantia_db == "Com Garantia":
-                dias = dias_garantia_db
-                garantia = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-            else:
-                # Sem Garantia: OS = --, VENDA = --
-                garantia = "--"
-        else:
-            saida = valores[5]
-            garantia = valores[6]
-
-        # 1. Atualiza a situação, saída e garantia no DB
-        c.execute("UPDATE os SET situacao=?, saida=?, garantia=? WHERE numero=? AND tipo_documento=?",
-                  (nova, saida, garantia, numero, tipo_documento))
-
-        valor_texto = row[7]
-        total = parse_monetario_to_float(valor_texto)
-
-        dados = {
-            "numero": numero, "cliente": row[0], "telefone": row[1], "modelo": row[2], 
-            "imei": row[3], "senha": row[4], "acessorios": row[5], "problemas": row[6],
-            "situacao": nova, "valor": row[7], "entrada": row[8], "saida": saida, 
-            "garantia": garantia
-        }
-
-        # 2. Regenera o PDF
-        novo_pdf = gerar_documento(dados, valor_texto, total, tipo_garantia_db, metodo_pagamento_db, checklist_db, tipo_documento, dias_garantia_db)
-        
-        # 3. Atualiza o caminho do PDF no DB
-        c.execute("UPDATE os SET arquivo=? WHERE numero=? AND tipo_documento=?", (novo_pdf, numero, tipo_documento))
-
-        conn.commit()
-        conn.close()
-
-        self.tabela.item(item, values=(
-            tipo_documento, numero, valores[2], valores[3], valores[4],
-            saida, garantia, nova, novo_pdf
-        ))
-
-        messagebox.showinfo("OK", f"Situação do {tipo_documento} atualizada e documento regenerado!")
-
-
-    def atualizar_pagamento(self):
-        """Função para atualizar apenas o método de pagamento e regenerar o PDF."""
-        item = self.tabela.focus()
-        if not item:
-            messagebox.showerror("Erro", "Selecione um Documento!")
-            return
-
-        novo_pagamento = self.cb_pagamento.get()
-        if not novo_pagamento:
-            messagebox.showerror("Erro", "Selecione o novo método de pagamento!")
-            return
-            
-        valores = self.tabela.item(item)["values"]
-        tipo_documento = valores[0]
-        numero = valores[1]
-
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-
-        # 1. Atualiza o Método de Pagamento no DB
-        c.execute("UPDATE os SET metodo_pagamento=? WHERE numero=? AND tipo_documento=?", (novo_pagamento, numero, tipo_documento))
-        
-        # 2. Busca os dados completos 
-        c.execute("""
-            SELECT cliente, telefone, modelo, imei, senha, acessorios, problemas, 
-                   valor, entrada, saida, garantia, situacao, tipo_garantia, checklist, dias_garantia
-            FROM os WHERE numero=? AND tipo_documento=?
-        """, (numero, tipo_documento))
-        row = c.fetchone()
-        
-        dados = {
-            "numero": numero, "cliente": row[0], "telefone": row[1], "modelo": row[2], 
-            "imei": row[3], "senha": row[4], "acessorios": row[5], "problemas": row[6], 
-            "valor": row[7], "entrada": row[8], "saida": row[9], "garantia": row[10], 
-            "situacao": row[11],
-        }
-        
-        valor_texto = dados["valor"]
-        total = parse_monetario_to_float(valor_texto)
-
-        # 3. Regenera o PDF
-        tipo_garantia_db = row[12]
-        checklist_db = row[13] 
-        dias_garantia_db = row[14]
-        
-        novo_pdf = gerar_documento(dados, valor_texto, total, tipo_garantia_db, novo_pagamento, checklist_db, tipo_documento, dias_garantia_db) 
-
-        # 4. Atualiza o caminho do PDF no DB
-        c.execute("UPDATE os SET arquivo=? WHERE numero=? AND tipo_documento=?", (novo_pdf, numero, tipo_documento))
-
-        conn.commit()
-        conn.close()
-        
-        self.tabela.item(item, values=(
-            tipo_documento, numero, dados["cliente"], dados["modelo"], dados["entrada"],
-            dados["saida"], dados["garantia"], dados["situacao"], novo_pdf
-        ))
-
-        messagebox.showinfo("OK", f"Método de pagamento do {tipo_documento} atualizado e documento regenerado!")
-
-    def atualizar_valor(self):
-        """Função para atualizar o valor do serviço e regenerar o PDF."""
-        item = self.tabela.focus()
-        if not item:
-            messagebox.showerror("Erro", "Selecione um Documento!")
-            return
-
-        novo_valor_raw = self.entry_novo_valor.get().strip()
-        if not novo_valor_raw:
-            messagebox.showerror("Erro", "Insira o novo valor!")
+        if not all([cliente, telefone, modelo, valor_str]):
+            messagebox.showwarning("Aviso", "Os campos 'Cliente', 'Telefone', 'Modelo/Produto' e 'Valor (R$)' são obrigatórios.")
             return
 
         try:
-            if novo_valor_raw.count(',') > 1:
-                raise ValueError
-                
-            novo_valor_float = parse_monetario_to_float(novo_valor_raw)
-            novo_valor_texto = formatar_monetario(novo_valor_float)
+            total_float = parse_monetario_to_float(valor_str)
+            valor_texto = formatar_monetario(total_float)
         except ValueError:
-            messagebox.showerror("Erro", "Valor inválido. Use vírgula para centavos (ex: 150,50).")
+            messagebox.showerror("Erro de Valor", "Formato de valor (R$) inválido.")
             return
 
-        valores = self.tabela.item(item)["values"]
-        tipo_documento = valores[0]
-        numero = valores[1]
+        # 2. Coleta de dados restantes
+        numero = self.numero_documento 
+        imei = self.campos["imei"].get().strip()
+        senha = self.campos["senha"].get().strip()
+        acessorios = self.campos["acessorios"].get().strip()
+        problemas = self.campos["problemas_detalhe"].get().strip()
+        situacao = self.campos["situacao"].get()
+        tipo_garantia = self.campos["tipo_garantia"].get()
+        metodo_pagamento = self.campos["metodo_pagamento"].get()
+        tipo_documento = self.tipo_documento_var.get()
 
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
+        entrada = datetime.now().strftime("%d/%m/%Y")
+        
+        saida = ""
+        if situacao == "CONCLUÍDA":
+            saida = datetime.now().strftime("%d/%m/%Y")
 
-        # 1. Atualiza o Valor no DB
-        c.execute("UPDATE os SET valor=? WHERE numero=? AND tipo_documento=?", (novo_valor_texto, numero, tipo_documento))
-        
-        # 2. Busca os dados completos para regenerar o PDF 
-        c.execute("""
-            SELECT cliente, telefone, modelo, imei, senha, acessorios, problemas, 
-                   entrada, saida, garantia, situacao, tipo_garantia, metodo_pagamento, checklist, dias_garantia
-            FROM os WHERE numero=? AND tipo_documento=?
-        """, (numero, tipo_documento))
-        row = c.fetchone()
-        
-        dados = {
-            "numero": numero, "cliente": row[0], "telefone": row[1], "modelo": row[2], 
-            "imei": row[3], "senha": row[4], "acessorios": row[5], "problemas": row[6], 
-            "valor": novo_valor_texto, "entrada": row[7], "saida": row[8], 
-            "garantia": row[9], "situacao": row[10],
+        dias_garantia_texto = self.dias_garantia_var.get().replace(" Dias", "")
+        try:
+            dias_garantia_num = int(dias_garantia_texto) if dias_garantia_texto.isdigit() else 0
+        except:
+            dias_garantia_num = 0
+
+        garantia = "S/Garantia"
+        if tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
+            data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
+            garantia = data_garantia.strftime("%d/%m/%Y")
+
+        checklist_data = [f"{item}:{var.get()}" for item, var in self.checklist_vars.items()]
+        checklist_str = ";".join(checklist_data)
+
+        # 3. Estruturação dos dados
+        dados_db = {
+            "numero": numero,
+            "cliente": cliente,
+            "telefone": telefone,
+            "modelo": modelo,
+            "imei": imei,
+            "senha": senha,
+            "acessorios": acessorios,
+            "problemas": problemas,
+            "situacao": situacao,
+            "valor": valor_texto,
+            "entrada": entrada,
+            "saida": saida,
+            "garantia": garantia,
+            "tipo_garantia": tipo_garantia,
+            "metodo_pagamento": metodo_pagamento,
+            "checklist": checklist_str,
+            "dias_garantia": dias_garantia_num,
+            "tipo_documento": tipo_documento
         }
         
-        total = novo_valor_float
-
-        # 3. Regenera o PDF
-        tipo_garantia_db = row[11]
-        metodo_pagamento_db = row[12]
-        checklist_db = row[13] 
-        dias_garantia_db = row[14]
+        # 4. Geração do PDF
+        caminho_pdf = gerar_documento(dados_db, valor_texto, total_float, tipo_garantia, metodo_pagamento, checklist_str, tipo_documento, dias_garantia_num)
         
-        novo_pdf = gerar_documento(dados, novo_valor_texto, total, tipo_garantia_db, metodo_pagamento_db, checklist_db, tipo_documento, dias_garantia_db) 
+        if caminho_pdf:
+            # 5. Inserção no Banco de Dados
+            try:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                
+                cols = ", ".join(dados_db.keys())
+                placeholders = ", ".join("?" * len(dados_db))
+                values = tuple(dados_db.values()) + (caminho_pdf,)
+                
+                c.execute(f"INSERT INTO os ({cols}, arquivo) VALUES ({placeholders}, ?)", values)
+                
+                conn.commit()
+                conn.close()
+                
+                messagebox.showinfo("Sucesso", f"{tipo_documento} {numero} salva com sucesso e PDF gerado:\n{caminho_pdf}")
+                
+                abrir_arquivo(caminho_pdf)
+                
+                self.limpar()
 
-        # 4. Atualiza o caminho do PDF no DB
-        c.execute("UPDATE os SET arquivo=? WHERE numero=? AND tipo_documento=?", (novo_pdf, numero, tipo_documento))
+            except sqlite3.Error as e:
+                messagebox.showerror("Erro no DB", f"Erro ao salvar no banco de dados: {str(e)}")
+            except Exception as e:
+                messagebox.showerror("Erro Inesperado", f"Erro: {str(e)}")
+        else:
+            messagebox.showerror("Erro", f"Não foi possível salvar o documento.")
+
+    def carregar_dados_lista(self, search=""):
+        """Carrega os dados do banco para a Treeview, aplicando filtro de busca."""
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        
+        for item in self.tabela.get_children():
+            self.tabela.delete(item)
+
+        query = "SELECT * FROM os"
+        params = []
+        
+        if search:
+            search_pattern = f"%{search}%"
+            query += " WHERE numero LIKE ? OR cliente LIKE ? OR modelo LIKE ? OR imei LIKE ? OR problemas LIKE ?"
+            params = [search_pattern] * 5 
+
+        query += " ORDER BY id DESC"
+        
+        try:
+            c.execute(query, params)
+            rows = c.fetchall()
+            conn.close()
+
+            col_names = [description[0] for description in c.description]
+            
+            def get_val(row, name):
+                try:
+                    return row[col_names.index(name)]
+                except ValueError:
+                    return "" 
+
+            for row in rows:
+                tipo = get_val(row, "tipo_documento")
+                numero = get_val(row, "numero")
+                cliente = get_val(row, "cliente")
+                modelo = get_val(row, "modelo")
+                entrada = get_val(row, "entrada")
+                saida = get_val(row, "saida")
+                garantia = get_val(row, "garantia")
+                situacao = get_val(row, "situacao")
+                arquivo = get_val(row, "arquivo") 
+
+                self.tabela.insert("", tk.END, values=(tipo, numero, cliente, modelo, entrada, saida, garantia, situacao, arquivo))
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Erro de Leitura", f"Erro ao carregar dados do banco: {str(e)}")
+            
+    def deletar(self):
+        """Deleta o registro selecionado e seu arquivo PDF associado."""
+        item = self.tabela.focus()
+        if not item:
+            messagebox.showwarning("Aviso", "Selecione um documento para deletar!")
+            return
+
+        values = self.tabela.item(item)['values']
+        tipo_documento = values[0]
+        numero = values[1]
+        caminho_pdf = values[8] 
+
+        if messagebox.askyesno("Confirmação", f"Tem certeza que deseja deletar o documento {numero} ({tipo_documento})?"):
+            try:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                c.execute("DELETE FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
+                conn.commit()
+                conn.close()
+
+                if caminho_pdf and os.path.exists(caminho_pdf):
+                    os.remove(caminho_pdf)
+                
+                messagebox.showinfo("Sucesso", f"Documento {numero} deletado e arquivo PDF removido.")
+                self.carregar_dados_lista(search=self.search_var.get())
+
+            except sqlite3.Error as e:
+                messagebox.showerror("Erro", f"Erro ao deletar no banco de dados: {str(e)}")
+            except OSError as e:
+                messagebox.showwarning("Aviso", f"Registro deletado do DB, mas o arquivo PDF não pôde ser removido.\nPode estar aberto em outro programa. Erro: {str(e)}")
+
+
+    def atualizar_valor_os(self):
+        """Atualiza o valor de um registro e regera o PDF."""
+        item = self.tabela.focus()
+        if not item:
+            messagebox.showwarning("Aviso", "Selecione um documento na lista para atualizar!")
+            return
+
+        novo_valor_str = self.entry_novo_valor.get().strip()
+        if not novo_valor_str:
+            messagebox.showwarning("Aviso", "Insira um novo valor no campo abaixo.")
+            return
+
+        try:
+            novo_total_float = parse_monetario_to_float(novo_valor_str)
+            novo_valor_texto = formatar_monetario(novo_total_float)
+        except ValueError:
+            messagebox.showerror("Erro de Valor", "Formato de novo valor (R$) inválido.")
+            return
+
+        values = self.tabela.item(item)['values']
+        tipo_documento = values[0]
+        numero = values[1]
+        
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
+        row = c.fetchone()
+        
+        if not row:
+            conn.close()
+            messagebox.showerror("Erro", "Registro não encontrado no banco de dados.")
+            return
+
+        col_names = [description[0] for description in c.description]
+        dados_db = dict(zip(col_names, row))
+        
+        dados_db["valor"] = novo_valor_texto
+        dados_db["situacao"] = "CONCLUÍDA" 
+        
+        if not dados_db["saida"] or dados_db["saida"] == "N/A":
+             dados_db["saida"] = datetime.now().strftime("%d/%m/%Y")
+        
+        # Corrigido o dicionário de dados para regeneração
+        dados_regeneracao = {
+            "numero": dados_db["numero"],
+            "cliente": dados_db["cliente"],
+            "telefone": dados_db["telefone"],
+            "modelo": dados_db["modelo"],
+            "imei": dados_db["imei"],
+            "senha": dados_db["senha"],
+            "acessorios": dados_db["acessorios"],
+            "problemas": dados_db["problemas"],
+            "situacao": dados_db["situacao"],
+            "entrada": dados_db["entrada"],
+            "saida": dados_db["saida"],
+            "garantia": dados_db["garantia"]
+        }
+        
+        novo_pdf = gerar_documento(
+            dados_regeneracao,
+            novo_valor_texto,
+            novo_total_float,
+            dados_db["tipo_garantia"],
+            dados_db["metodo_pagamento"],
+            dados_db["checklist"],
+            tipo_documento,
+            dados_db["dias_garantia"]
+        )
+
+        if not novo_pdf:
+            conn.close()
+            messagebox.showerror("Erro", "Não foi possível regerar o PDF.")
+            return
+
+        c.execute("""
+            UPDATE os SET valor=?, situacao=?, saida=?, arquivo=? 
+            WHERE numero=? AND tipo_documento=?
+        """, (novo_valor_texto, dados_db["situacao"], dados_db["saida"], novo_pdf, numero, tipo_documento))
 
         conn.commit()
         conn.close()
         
-        self.entry_novo_valor.delete(0, END)
+        self.entry_novo_valor.delete(0, tk.END) 
         
+        dados = {k: dados_regeneracao.get(k, "") for k in dados_regeneracao} 
         self.tabela.item(item, values=(
             tipo_documento, numero, dados["cliente"], dados["modelo"], dados["entrada"],
             dados["saida"], dados["garantia"], dados["situacao"], novo_pdf
@@ -1279,11 +1206,9 @@ class SistemaOS:
             messagebox.showerror("Erro", f"Erro ao abrir o PDF:\n{str(e)}")
 
 
-# ==========================================================
-# INICIAR SISTEMA
-# ==========================================================
-
-criar_banco()
-root = Tk()
-SistemaOS(root)
-root.mainloop()
+if __name__ == "__main__":
+    criar_banco()
+    # Substitui Tk() por ctk.CTk()
+    root = ctk.CTk()
+    SistemaOS(root)
+    root.mainloop()
