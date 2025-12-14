@@ -348,7 +348,7 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
         ("Valor (R$)", valor_texto),
         ("Total (R$)", formatar_monetario(total_float)),
         ("Método Pgto.", metodo_pagamento), 
-        ("Saída", dados["saida"]),
+        ("Saída", dados["saida"] if dados["saida"] else "N/A"), # Alterado para N/A se vazio
         ("Garantia até", dados["garantia"]),
         ("Tipo de Garantia", tipo_garantia) 
     ])
@@ -358,30 +358,30 @@ def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagam
     termo_texto = ""
     
     if tipo_documento == "OS":
-        if tipo_garantia == "Com Garantia":
+        if dados["situacao"] == "CONCLUÍDA" and tipo_garantia == "Com Garantia": # Condição alterada
             termo_texto = (
                 f"<font size='8'><b>{AVISO_PAGAMENTO}</b> A garantia cobre exclusivamente o **serviço** realizado pelo período de **{dias_garantia_texto}** informado nesta OS. "
                 "Não cobre danos causados por mau uso, queda, oxidação, danos líquidos, tela quebrada ou violação do lacre. "
                 "O aparelho deve ser retirado em até 90 dias após a conclusão do serviço.</font>"
             )
         else: 
-            termo_texto = (
-                f"<font size='8'><b>{AVISO_PAGAMENTO} SERVIÇO NÃO COBERTO POR GARANTIA!</b> O cliente está ciente de que o serviço realizado "
-                "não possui cobertura de garantia devido à natureza do reparo/peça ou condição do aparelho. "
+            termo_texto = ( # Se não for Concluída ou for Sem Garantia
+                f"<font size='8'><b>{AVISO_PAGAMENTO} SERVIÇO SEM GARANTIA!</b> Esta OS está como <b>{dados['situacao']}</b>. O cliente está ciente de que o serviço realizado "
+                "não possui cobertura de garantia devido à situação, natureza do reparo/peça ou condição do aparelho. "
                 "O aparelho deve ser retirado em até 90 dias após a conclusão do serviço.</font>"
             )
             
     else: 
-        if tipo_garantia == "Com Garantia":
+        if dados["situacao"] == "CONCLUÍDA" and tipo_garantia == "Com Garantia": # Condição alterada
             termo_texto = (
                 f"<font size='8'><b>{AVISO_PAGAMENTO}</b> A garantia de **{dias_garantia_texto}** cobre somente se o produto apresentar "
                 "problemas de fábrica e estiver com a caixa do mesmo. "
                 "A garantia **NÃO COBRE** danos por mau uso, queda, oxidação, danos líquidos ou remoção de selos de garantia.</font>"
             )
         else: 
-            termo_texto = (
+            termo_texto = ( # Se não for Concluída ou for Sem Garantia
                 f"<font size='8'><b>{AVISO_PAGAMENTO} PRODUTO VENDIDO SEM GARANTIA!</b> O cliente está ciente de que este produto "
-                "não possui cobertura de garantia.</font>"
+                "não possui cobertura de garantia (Status: {dados['situacao']}).</font>"
             )
 
 
@@ -559,8 +559,10 @@ class SistemaOS:
             situacao_combo = self.campos["situacao"]
             if is_os:
                 situacao_combo.set("EM ABERTO") 
+                situacao_combo.configure(values=["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA"])
             else:
                 situacao_combo.set("CONCLUÍDA")
+                situacao_combo.configure(values=["CONCLUÍDA", "CANCELADA"]) # Opções limitadas para VENDA
 
             os_fields_2col = ["imei", "senha"]
             
@@ -902,6 +904,36 @@ class SistemaOS:
         b_deletar.pack(side=tk.LEFT, padx=5)
         self.botoes_lista.append(b_deletar)
 
+        # --------------------------------------------------------------------------------------------------
+        # NOVO: FRAME DE ATUALIZAÇÃO DE STATUS
+        # --------------------------------------------------------------------------------------------------
+        status_update_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        status_update_frame.pack(side=tk.LEFT, padx=5)
+        
+        ctk.CTkLabel(status_update_frame, text="Novo Status:").pack(side=tk.LEFT, padx=5)
+        
+        # Variável para o novo status
+        self.novo_status_var = tk.StringVar(value="EM ANDAMENTO")
+        
+        # ComboBox de Novo Status (CTkComboBox)
+        self.combo_novo_status = ctk.CTkComboBox(status_update_frame, 
+                                                 width=150, 
+                                                 values=["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA", "CANCELADA"],
+                                                 variable=self.novo_status_var,
+                                                 state="readonly")
+        self.combo_novo_status.pack(side=tk.LEFT, padx=5)
+        
+        # Botão Atualizar Status (VERDE)
+        b_atualizar_status = ctk.CTkButton(status_update_frame, 
+                                           text="Atualizar Status", 
+                                           width=150, 
+                                           command=self.atualizar_status_documento, 
+                                           fg_color=COR_VERDE_PRINCIPAL, 
+                                           hover_color=COR_HOVER_VERDE)
+        b_atualizar_status.pack(side=tk.LEFT, padx=5)
+        self.botoes_lista.append(b_atualizar_status)
+        # --------------------------------------------------------------------------------------------------
+
         # Frame de Atualização de Valor (CTkFrame)
         update_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
         update_frame.pack(side=tk.RIGHT, padx=5)
@@ -995,8 +1027,9 @@ class SistemaOS:
         except:
             dias_garantia_num = 0
 
+        # >>> AJUSTE NA LÓGICA DE GARANTIA: SÓ CALCULA SE FOR CONCLUÍDA <<<
         garantia = "S/Garantia"
-        if tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
+        if situacao == "CONCLUÍDA" and tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
             # Garante que a garantia é calculada a partir da data de entrada
             try:
                 data_base = datetime.strptime(entrada, "%d/%m/%Y")
@@ -1006,6 +1039,7 @@ class SistemaOS:
                 # Se a data de entrada for inválida (raro, mas possível), usa a data atual
                 data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
                 garantia = data_garantia.strftime("%d/%m/%Y")
+        # >>> FIM DO AJUSTE <<<
 
         checklist_data = [f"{item}:{var.get()}" for item, var in self.checklist_vars.items()]
         checklist_str = ";".join(checklist_data)
@@ -1024,7 +1058,7 @@ class SistemaOS:
             "valor": valor_texto,
             "entrada": entrada,
             "saida": saida,
-            "garantia": garantia,
+            "garantia": garantia, # Valor de garantia ajustado
             "tipo_garantia": tipo_garantia,
             "metodo_pagamento": metodo_pagamento,
             "checklist": checklist_str,
@@ -1033,7 +1067,6 @@ class SistemaOS:
         }
         
         # 4. Geração do PDF
-        # Se for VENDA, o checklist_str pode ser enviado vazio, pois não é usado na função gerar_documento para Venda, mas o parâmetro é obrigatório
         caminho_pdf = gerar_documento(dados_db, valor_texto, total_float, tipo_garantia, metodo_pagamento, checklist_str, tipo_documento, dias_garantia_num)
         
         if caminho_pdf:
@@ -1101,7 +1134,7 @@ class SistemaOS:
                 cliente = get_val(row, "cliente")
                 modelo = get_val(row, "modelo")
                 entrada = get_val(row, "entrada")
-                saida = get_val(row, "saida")
+                saida = get_val(row, "saida") or "N/A" # Se for None, exibe N/A
                 garantia = get_val(row, "garantia")
                 situacao = get_val(row, "situacao")
                 arquivo = get_val(row, "arquivo") 
@@ -1143,8 +1176,129 @@ class SistemaOS:
                 messagebox.showwarning("Aviso", f"Registro deletado do DB, mas o arquivo PDF não pôde ser removido.\nPode estar aberto em outro programa. Erro: {str(e)}")
 
 
+    def atualizar_status_documento(self):
+        """Atualiza o status (situação) de um registro e regera o PDF."""
+        item = self.tabela.focus()
+        if not item:
+            messagebox.showwarning("Aviso", "Selecione um documento na lista para atualizar o status!")
+            return
+
+        novo_status = self.novo_status_var.get()
+        values = self.tabela.item(item)['values']
+        tipo_documento = values[0]
+        numero = values[1]
+        
+        if novo_status == values[7]: # values[7] é a Situação/Status atual
+            messagebox.showinfo("Aviso", f"O status já é '{novo_status}'. Nenhuma alteração necessária.")
+            return
+
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
+        row = c.fetchone()
+        
+        if not row:
+            conn.close()
+            messagebox.showerror("Erro", "Registro não encontrado no banco de dados.")
+            return
+
+        col_names = [description[0] for description in c.description]
+        dados_db = dict(zip(col_names, row))
+        
+        # Atualiza o status e a data de saída (se necessário)
+        dados_db["situacao"] = novo_status 
+        
+        data_saida = ""
+        # Preenche a data de saída APENAS se o novo status for CONCLUÍDA
+        if novo_status == "CONCLUÍDA":
+             data_saida = datetime.now().strftime("%d/%m/%Y")
+        
+        dados_db["saida"] = data_saida
+        
+        # >>> NOVO: Recalcula a garantia com base no novo status <<<
+        
+        tipo_garantia = dados_db["tipo_garantia"]
+        dias_garantia_num = dados_db["dias_garantia"]
+        entrada = dados_db["entrada"] # Usa a data original de entrada
+        
+        novo_garantia = "S/Garantia" # Valor padrão
+        
+        if novo_status == "CONCLUÍDA" and tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
+            try:
+                # Usa a data de entrada original para calcular a garantia
+                data_base = datetime.strptime(entrada, "%d/%m/%Y")
+                data_garantia = data_base + timedelta(days=dias_garantia_num)
+                novo_garantia = data_garantia.strftime("%d/%m/%Y")
+            except ValueError:
+                # Fallback, usa a data atual (improvável, mas seguro)
+                data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
+                novo_garantia = data_garantia.strftime("%d/%m/%Y")
+                
+        dados_db["garantia"] = novo_garantia # Atualiza o campo garantia
+        
+        # >>> FIM DA NOVA LÓGICA <<<
+        
+        # Garante que temos o valor monetário formatado para a regeração do PDF
+        valor_texto = dados_db["valor"]
+        try:
+            total_float = parse_monetario_to_float(valor_texto)
+        except ValueError:
+             total_float = 0.0 # Fallback
+        
+        # Corrigido o dicionário de dados para regeneração (baseado no código original)
+        dados_regeneracao = {
+            "numero": dados_db["numero"],
+            "cliente": dados_db["cliente"],
+            "telefone": dados_db["telefone"],
+            "modelo": dados_db["modelo"],
+            "imei": dados_db["imei"],
+            "senha": dados_db["senha"],
+            "acessorios": dados_db["acessorios"],
+            "problemas": dados_db["problemas"],
+            "situacao": dados_db["situacao"], # NOVO STATUS
+            "entrada": dados_db["entrada"],
+            "saida": dados_db["saida"],     # NOVA SAÍDA
+            "garantia": dados_db["garantia"] # NOVA GARANTIA
+        }
+        
+        # 1. Regerar o PDF
+        novo_pdf = gerar_documento(
+            dados_regeneracao,
+            valor_texto,
+            total_float,
+            dados_db["tipo_garantia"],
+            dados_db["metodo_pagamento"],
+            dados_db["checklist"],
+            tipo_documento,
+            dados_db["dias_garantia"]
+        )
+
+        if not novo_pdf:
+            conn.close()
+            messagebox.showerror("Erro", "Não foi possível regerar o PDF com o novo status.")
+            return
+
+        # 2. Atualizar o DB - INCLUSÃO DO CAMPO 'GARANTIA' NO UPDATE
+        c.execute("""
+            UPDATE os SET situacao=?, saida=?, garantia=?, arquivo=? 
+            WHERE numero=? AND tipo_documento=?
+        """, (dados_db["situacao"], dados_db["saida"], dados_db["garantia"], novo_pdf, numero, tipo_documento))
+
+        conn.commit()
+        conn.close()
+        
+        # 3. Atualizar a Treeview
+        dados = {k: dados_regeneracao.get(k, "") for k in dados_regeneracao} 
+        self.tabela.item(item, values=(
+            tipo_documento, numero, dados["cliente"], dados["modelo"], dados["entrada"],
+            dados["saida"] or "N/A", dados["garantia"], dados["situacao"], novo_pdf
+        ))
+
+        messagebox.showinfo("OK", f"Status do {tipo_documento} {numero} atualizado para '{novo_status}' e documento regenerado!")
+
+
     def atualizar_valor_os(self):
-        """Atualiza o valor de um registro e regera o PDF."""
+        """Atualiza o valor de um registro, força o status para CONCLUÍDA e regera o PDF."""
         item = self.tabela.focus()
         if not item:
             messagebox.showwarning("Aviso", "Selecione um documento na lista para atualizar!")
@@ -1180,11 +1334,37 @@ class SistemaOS:
         dados_db = dict(zip(col_names, row))
         
         dados_db["valor"] = novo_valor_texto
-        dados_db["situacao"] = "CONCLUÍDA" 
         
-        if not dados_db["saida"] or dados_db["saida"] == "N/A":
-             dados_db["saida"] = datetime.now().strftime("%d/%m/%Y")
+        status_anterior = dados_db["situacao"]
         
+        # Se for atualizar o valor, assumimos que o serviço foi concluído (se não estiver cancelado)
+        if dados_db["situacao"] != "CANCELADA":
+            dados_db["situacao"] = "CONCLUÍDA" 
+            if not dados_db["saida"] or dados_db["saida"] == "N/A":
+                 dados_db["saida"] = datetime.now().strftime("%d/%m/%Y")
+
+        # >>> NOVO: Recalcula a garantia se o status foi alterado/mantido como CONCLUÍDA <<<
+        if dados_db["situacao"] == "CONCLUÍDA" and dados_db["tipo_garantia"] == "Com Garantia":
+            tipo_garantia = dados_db["tipo_garantia"]
+            dias_garantia_num = dados_db["dias_garantia"]
+            entrada = dados_db["entrada"]
+            
+            novo_garantia = "S/Garantia" 
+            
+            if dias_garantia_num > 0:
+                try:
+                    data_base = datetime.strptime(entrada, "%d/%m/%Y")
+                    data_garantia = data_base + timedelta(days=dias_garantia_num)
+                    novo_garantia = data_garantia.strftime("%d/%m/%Y")
+                except ValueError:
+                    data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
+                    novo_garantia = data_garantia.strftime("%d/%m/%Y")
+            
+            dados_db["garantia"] = novo_garantia
+        # Se o status for CANCELADA, a garantia deve ser mantida como S/Garantia, o que já está implícito
+        # pois o valor inicial do banco é 'S/Garantia' e só é calculado aqui se for 'CONCLUÍDA'.
+        # >>> FIM DA NOVA LÓGICA <<<
+
         # Corrigido o dicionário de dados para regeneração
         dados_regeneracao = {
             "numero": dados_db["numero"],
@@ -1198,7 +1378,7 @@ class SistemaOS:
             "situacao": dados_db["situacao"],
             "entrada": dados_db["entrada"],
             "saida": dados_db["saida"],
-            "garantia": dados_db["garantia"]
+            "garantia": dados_db["garantia"] # Garantia ajustada
         }
         
         novo_pdf = gerar_documento(
@@ -1217,10 +1397,11 @@ class SistemaOS:
             messagebox.showerror("Erro", "Não foi possível regerar o PDF.")
             return
 
+        # 2. Atualizar o DB - INCLUSÃO DO CAMPO 'GARANTIA' NO UPDATE
         c.execute("""
-            UPDATE os SET valor=?, situacao=?, saida=?, arquivo=? 
+            UPDATE os SET valor=?, situacao=?, saida=?, garantia=?, arquivo=? 
             WHERE numero=? AND tipo_documento=?
-        """, (novo_valor_texto, dados_db["situacao"], dados_db["saida"], novo_pdf, numero, tipo_documento))
+        """, (novo_valor_texto, dados_db["situacao"], dados_db["saida"], dados_db["garantia"], novo_pdf, numero, tipo_documento))
 
         conn.commit()
         conn.close()
@@ -1230,7 +1411,7 @@ class SistemaOS:
         dados = {k: dados_regeneracao.get(k, "") for k in dados_regeneracao} 
         self.tabela.item(item, values=(
             tipo_documento, numero, dados["cliente"], dados["modelo"], dados["entrada"],
-            dados["saida"], dados["garantia"], dados["situacao"], novo_pdf
+            dados["saida"] or "N/A", dados["garantia"], dados["situacao"], novo_pdf
         ))
 
         messagebox.showinfo("OK", f"Valor do {tipo_documento} atualizado e documento regenerado!")
