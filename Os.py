@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime, timedelta
 import tkinter as tk # Manter tkinter para constantes (tk.END) e Treeview
 from tkinter import ttk, messagebox
+import threading
 
 # NOVO: Importa CustomTkinter
 import customtkinter as ctk
@@ -150,6 +151,24 @@ def criar_banco():
                 except sqlite3.Error as e:
                     print(f"Aviso: Não foi possível adicionar coluna {col}: {e}")
                     pass
+
+        # Adicionar índices para melhor performance
+        indices = [
+            "CREATE INDEX IF NOT EXISTS idx_numero ON os (numero)",
+            "CREATE INDEX IF NOT EXISTS idx_cliente ON os (cliente)",
+            "CREATE INDEX IF NOT EXISTS idx_modelo ON os (modelo)",
+            "CREATE INDEX IF NOT EXISTS idx_imei ON os (imei)",
+            "CREATE INDEX IF NOT EXISTS idx_problemas ON os (problemas)",
+            "CREATE INDEX IF NOT EXISTS idx_tipo_documento ON os (tipo_documento)",
+            "CREATE INDEX IF NOT EXISTS idx_situacao ON os (situacao)",
+            "CREATE INDEX IF NOT EXISTS idx_entrada ON os (entrada)"
+        ]
+        for idx in indices:
+            try:
+                c.execute(idx)
+                conn.commit()
+            except sqlite3.Error as e:
+                print(f"Aviso: Não foi possível criar índice: {e}")
 
         conn.close()
     except sqlite3.Error as e:
@@ -475,8 +494,14 @@ class SistemaOS:
         # NOVO: Variável para a Data de Entrada, inicializada com a data atual
         self.data_entrada_var = tk.StringVar(value=datetime.now().strftime("%d/%m/%Y"))
         
+        # Variáveis para paginação
+        self.page_size = 50  # Registros por página
+        self.current_page = 1
+        self.total_records = 0
+        
         self.criar_tela_preenchimento(self.container)
         self.criar_tela_lista(self.container)
+        self.criar_tela_editar(self.container)
 
         self.show_frame("Preenchimento")
         self.gerar_numero_documento() 
@@ -508,7 +533,7 @@ class SistemaOS:
         frame = self.frames[page_name]
         frame.tkraise()
         if page_name == "Lista":
-            self.carregar_dados_lista() 
+            self.carregar_dados_lista(page=self.current_page) 
 
     def criar_tela_preenchimento(self, parent):
         # Substitui Frame por CTkFrame
@@ -849,7 +874,7 @@ class SistemaOS:
         
         ctk.CTkLabel(search_frame, text="Buscar:").pack(side=tk.LEFT, padx=5)
         self.search_var = tk.StringVar()
-        self.search_var.trace_add("write", lambda name, index, mode: self.carregar_dados_lista(search=self.search_var.get()))
+        self.search_var.trace_add("write", lambda name, index, mode: self.buscar_com_reset())
         
         # Entrada de busca (CTkEntry)
         self.search_entry = ctk.CTkEntry(search_frame, width=200, textvariable=self.search_var)
@@ -905,51 +930,212 @@ class SistemaOS:
         self.botoes_lista.append(b_deletar)
 
         # --------------------------------------------------------------------------------------------------
-        # NOVO: FRAME DE ATUALIZAÇÃO DE STATUS
+        # NOVO: FRAME DE EDIÇÃO DE DOCUMENTO
         # --------------------------------------------------------------------------------------------------
-        status_update_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
-        status_update_frame.pack(side=tk.LEFT, padx=5)
+        edit_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        edit_frame.pack(side=tk.LEFT, padx=5)
         
-        ctk.CTkLabel(status_update_frame, text="Novo Status:").pack(side=tk.LEFT, padx=5)
-        
-        # Variável para o novo status
-        self.novo_status_var = tk.StringVar(value="EM ANDAMENTO")
-        
-        # ComboBox de Novo Status (CTkComboBox)
-        self.combo_novo_status = ctk.CTkComboBox(status_update_frame, 
-                                                 width=150, 
-                                                 values=["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA", "CANCELADA"],
-                                                 variable=self.novo_status_var,
-                                                 state="readonly")
-        self.combo_novo_status.pack(side=tk.LEFT, padx=5)
-        
-        # Botão Atualizar Status (VERDE)
-        b_atualizar_status = ctk.CTkButton(status_update_frame, 
-                                           text="Atualizar Status", 
-                                           width=150, 
-                                           command=self.atualizar_status_documento, 
-                                           fg_color=COR_VERDE_PRINCIPAL, 
-                                           hover_color=COR_HOVER_VERDE)
-        b_atualizar_status.pack(side=tk.LEFT, padx=5)
-        self.botoes_lista.append(b_atualizar_status)
+        # Botão Editar Documento (VERDE)
+        b_editar = ctk.CTkButton(edit_frame, 
+                                 text="Editar Documento", 
+                                 width=150, 
+                                 command=self.editar_documento, 
+                                 fg_color=COR_VERDE_PRINCIPAL, 
+                                 hover_color=COR_HOVER_VERDE)
+        b_editar.pack(side=tk.LEFT, padx=5)
+        self.botoes_lista.append(b_editar)
         # --------------------------------------------------------------------------------------------------
 
-        # Frame de Atualização de Valor (CTkFrame)
-        update_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
-        update_frame.pack(side=tk.RIGHT, padx=5)
+        # Frame de Paginação
+        pagination_frame = ctk.CTkFrame(f, fg_color="transparent")
+        pagination_frame.pack(side="bottom", fill="x", padx=10, pady=5)
         
-        ctk.CTkLabel(update_frame, text="Novo Valor (R$):").pack(side=tk.LEFT, padx=5)
-        # Entrada de Novo Valor (CTkEntry)
-        self.entry_novo_valor = ctk.CTkEntry(update_frame, width=150)
-        self.entry_novo_valor.pack(side=tk.LEFT, padx=5)
+        self.page_label = ctk.CTkLabel(pagination_frame, text="Página 1 de 1")
+        self.page_label.pack(side=tk.LEFT, padx=5)
         
-        # Botão Atualizar Valor/Regerar PDF (VERDE)
-        b_atualizar_valor = ctk.CTkButton(update_frame, text="Atualizar Valor/Regerar PDF", width=180, command=self.atualizar_valor_os, 
-                                          fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
-        b_atualizar_valor.pack(side=tk.LEFT, padx=5)
-        self.botoes_lista.append(b_atualizar_valor)
+        b_prev = ctk.CTkButton(pagination_frame, text="Anterior", width=80, command=self.pagina_anterior,
+                               fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_prev.pack(side=tk.LEFT, padx=5)
+        
+        b_next = ctk.CTkButton(pagination_frame, text="Próxima", width=80, command=self.pagina_proxima,
+                               fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_next.pack(side=tk.LEFT, padx=5)
+        
+        self.botoes_lista.append(b_prev)
+        self.botoes_lista.append(b_next)
         
         self.carregar_dados_lista()
+
+
+    def criar_tela_editar(self, parent):
+        # Frame para edição, similar ao preenchimento
+        f = ctk.CTkFrame(parent, fg_color="transparent")
+        self.frames["Editar"] = f
+        f.grid(row=0, column=0, sticky="nsew")
+
+        # center_frame
+        center_frame = ctk.CTkFrame(f, fg_color="transparent")
+        center_frame.place(relx=0.5, rely=0.5, anchor=tk.CENTER) 
+        
+        self.vint_edit = f.register(lambda v: v.isdigit() or v == "")
+        self.vmoney_edit = f.register(lambda v: all(ch in "0123456789,." for ch in v) and v.count(',') <= 1) 
+        self.campos_edit = {}
+        self.tel_var_edit = tk.StringVar() 
+        self.botoes_editar = []
+
+        def aplicar_e_mostrar_mascara_edit(event):
+            raw_text = self.tel_var_edit.get()
+            nums_only = "".join(ch for ch in raw_text if ch.isdigit())
+            if len(nums_only) >= 10: 
+                masked_text = aplicar_mascara_tel(raw_text)
+                self.tel_var_edit.set(masked_text)
+            else:
+                self.tel_var_edit.set(nums_only) 
+        
+        def on_tipo_garantia_change_edit(event):
+            combo_dias = self.campos_edit["dias_garantia"]
+            if self.campos_edit["tipo_garantia"].get() == "Com Garantia":
+                combo_dias.configure(state="readonly")
+            else:
+                combo_dias.configure(state="disabled")
+        
+        # Título
+        ctk.CTkLabel(center_frame, text="Editar Documento", font=('Arial', 16, 'bold')).pack(pady=(0, 10))
+
+        # Logo, se existir
+        if os.path.exists(LOGO_PADRAO):
+            try:
+                l = ImageTk.PhotoImage(PILImage.open(LOGO_PADRAO).resize((80, 80)))
+                app_mode = ctk.get_appearance_mode().lower()
+                bg_color_data = ctk.ThemeManager.theme["CTk"]["fg_color"]
+                current_bg_color = None
+                if isinstance(bg_color_data, dict):
+                    current_bg_color = bg_color_data.get(app_mode)
+                elif isinstance(bg_color_data, (list, tuple)) and len(bg_color_data) == 2:
+                    index = 0 if app_mode == "light" else 1
+                    current_bg_color = bg_color_data[index]
+                if isinstance(current_bg_color, (list, tuple)) and len(current_bg_color) >= 1:
+                    index = 0 if app_mode == "light" else 1
+                    current_bg_color = current_bg_color[index]
+                if not isinstance(current_bg_color, str) or not current_bg_color:
+                    current_bg_color = "#242424" if app_mode == "dark" else "#F0F0F0"
+                tk.Label(center_frame, image=l, bg=current_bg_color, relief="flat").pack(pady=(0, 10))
+                self.logo_edit = l
+            except Exception as e:
+                print(f"Aviso: Não foi possível carregar a logo: {e}")
+                pass
+
+        # Frame dos campos 
+        campo_frame = ctk.CTkFrame(center_frame, fg_color="transparent")
+        campo_frame.pack(pady=10, padx=20)
+
+        campos_info = [
+            ("Cliente*", "cliente"), ("Modelo*", "modelo"),
+            ("Telefone*", "telefone"), ("Data de Entrada*", "data_entrada"),
+            ("IMEI", "imei"),
+            ("Senha/Padrão", "senha"), ("Acessórios", "acessorios"),
+            ("Tipo de Garantia*", "tipo_garantia"), ("Método de Pagamento*", "metodo_pagamento"),
+            ("Valor (R$)*", "valor"), ("Situacao*", "situacao")
+        ]
+
+        W_ENTRY = 200
+        COMBO_VALORES = {
+            "situacao": ["EM ABERTO", "EM ANDAMENTO", "CONCLUÍDA", "CANCELADA"],
+            "tipo_garantia": ["Com Garantia", "Sem Garantia"],
+            "metodo_pagamento": ["CARTÃO", "DINHEIRO", "PIX"],
+        }
+        
+        for i, (label, key) in enumerate(campos_info):
+            row = i // 2
+            col = (i % 2) * 2
+
+            l = ctk.CTkLabel(campo_frame, text=label, anchor="w")
+            l.grid(row=row, column=col, sticky="w", padx=10, pady=(5, 0))
+            self.campos_edit[f"{key}_label"] = l
+
+            if key in COMBO_VALORES:
+                e = ctk.CTkComboBox(campo_frame, 
+                                    width=W_ENTRY, 
+                                    values=COMBO_VALORES[key], 
+                                    state="readonly")
+                if key == "tipo_garantia":
+                    e.configure(command=on_tipo_garantia_change_edit)
+            else:
+                e = ctk.CTkEntry(campo_frame, width=W_ENTRY)
+                if key == "telefone":
+                    e.configure(validate="key", validatecommand=(self.vint_edit, "%P"), textvariable=self.tel_var_edit)
+                    e.bind("<FocusOut>", aplicar_e_mostrar_mascara_edit)
+                elif key == "imei":
+                    e.configure(validate="key", validatecommand=(self.vint_edit, "%P"))
+                elif key == "valor":
+                    e.configure(validate="key", validatecommand=(self.vmoney_edit, "%P"))
+            
+            e.grid(row=row, column=col + 1, sticky="ew", padx=10, pady=(0, 5))
+            self.campos_edit[key] = e
+
+        # Dias de Garantia
+        dias_row = len(campos_info) // 2
+        l_dias = ctk.CTkLabel(campo_frame, text="Dias de Garantia*", anchor="w")
+        l_dias.grid(row=dias_row, column=2, sticky="w", padx=10, pady=(5, 0))
+        self.campos_edit["dias_garantia_label"] = l_dias
+        
+        e_dias = ctk.CTkComboBox(campo_frame, 
+                                 width=W_ENTRY, 
+                                 state="readonly", 
+                                 values=["30 Dias", "90 Dias"])
+        e_dias.grid(row=dias_row, column=3, sticky="ew", padx=10, pady=(0, 5))
+        self.campos_edit["dias_garantia"] = e_dias
+
+        # Checklist
+        self.checklist_frame_edit = ctk.CTkFrame(campo_frame, fg_color="transparent") 
+        self.checklist_frame_edit.grid(row=dias_row + 1, column=0, columnspan=4, sticky="w", padx=10, pady=(15, 5))
+        ctk.CTkLabel(self.checklist_frame_edit, text="CHECKLIST (PROBLEMAS/STATUS)", font=('Arial', 10, 'bold')).pack(anchor="w")
+        
+        self.checklist_vars_edit = {}
+        checklist_itens = [
+            "Tela Display", "Touch Screen", "Teclas", "Sensores de Proximidade", 
+            "Bluetooth", "Wi-Fi", "Ligações", "Alto Falante", 
+            "Câmera", "Microfone", "Conector Carregador", "Conector Cartão de Memória", 
+            "Sim Card", "Outros (Opcional - p/ defeitos internos)"
+        ]
+
+        chk_inner_frame = ctk.CTkFrame(self.checklist_frame_edit, fg_color="transparent")
+        chk_inner_frame.pack(fill="x")
+        
+        for i, item in enumerate(checklist_itens):
+            col = i // 7
+            var = tk.StringVar(value="Não")
+            chk = ctk.CTkCheckBox(chk_inner_frame, 
+                                  text=item, 
+                                  variable=var, 
+                                  onvalue="Sim", 
+                                  offvalue="Não",
+                                  border_color=COR_VERDE_PRINCIPAL)
+            chk.grid(row=i%7, column=col, sticky="w", padx=10)
+            self.checklist_vars_edit[item] = var
+
+        # Campo Detalhe Adicional
+        l_detalhe = ctk.CTkLabel(campo_frame, text="Detalhe Adicional (Opcional):")
+        self.campos_edit["problemas_detalhe_label"] = l_detalhe
+        l_detalhe.grid(row=dias_row + 2, column=0, columnspan=4, sticky="w", padx=10, pady=(10, 0))
+        
+        e_detalhe = ctk.CTkEntry(campo_frame, width=W_ENTRY * 2 + 30)
+        e_detalhe.grid(row=dias_row + 3, column=0, columnspan=4, sticky="ew", padx=10, pady=(0, 10))
+        self.campos_edit["problemas_detalhe"] = e_detalhe
+
+        # Botões
+        fb = ctk.CTkFrame(center_frame, fg_color="transparent")
+        fb.pack(pady=10)
+        
+        b_salvar_edit = ctk.CTkButton(fb, text="Salvar Alterações", width=180, command=self.salvar_edicao, 
+                                      fg_color=COR_VERDE_PRINCIPAL, hover_color=COR_HOVER_VERDE)
+        b_salvar_edit.grid(row=0, column=0, padx=6)
+        self.botoes_editar.append(b_salvar_edit)
+        
+        b_cancelar_edit = ctk.CTkButton(fb, text="Cancelar", width=180, command=lambda: self.show_frame("Lista"), 
+                                        fg_color=COR_VERMELHO)
+        b_cancelar_edit.grid(row=0, column=1, padx=6)
+        self.botoes_editar.append(b_cancelar_edit)
 
 
     def limpar(self):
@@ -1097,14 +1283,28 @@ class SistemaOS:
         else:
             messagebox.showerror("Erro", f"Não foi possível salvar o documento.")
 
-    def carregar_dados_lista(self, search=""):
-        """Carrega os dados do banco para a Treeview, aplicando filtro de busca."""
+    def carregar_dados_lista(self, search="", page=1):
+        """Carrega os dados do banco para a Treeview, aplicando filtro de busca e paginação."""
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
         
         for item in self.tabela.get_children():
             self.tabela.delete(item)
 
+        # Contar total de registros para paginação
+        count_query = "SELECT COUNT(*) FROM os"
+        count_params = []
+        if search:
+            search_pattern = f"%{search}%"
+            count_query += " WHERE numero LIKE ? OR cliente LIKE ? OR modelo LIKE ? OR imei LIKE ? OR problemas LIKE ?"
+            count_params = [search_pattern] * 5
+        
+        c.execute(count_query, count_params)
+        self.total_records = c.fetchone()[0]
+        
+        # Calcular offset
+        offset = (page - 1) * self.page_size
+        
         query = "SELECT * FROM os"
         params = []
         
@@ -1113,7 +1313,8 @@ class SistemaOS:
             query += " WHERE numero LIKE ? OR cliente LIKE ? OR modelo LIKE ? OR imei LIKE ? OR problemas LIKE ?"
             params = [search_pattern] * 5 
 
-        query += " ORDER BY id DESC"
+        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        params.extend([self.page_size, offset])
         
         try:
             c.execute(query, params)
@@ -1141,9 +1342,217 @@ class SistemaOS:
 
                 self.tabela.insert("", tk.END, values=(tipo, numero, cliente, modelo, entrada, saida, garantia, situacao, arquivo))
 
+            # Atualizar controles de paginação
+            self.atualizar_controle_paginacao()
+
         except sqlite3.Error as e:
             messagebox.showerror("Erro de Leitura", f"Erro ao carregar dados do banco: {str(e)}")
             
+    def atualizar_controle_paginacao(self):
+        total_pages = (self.total_records + self.page_size - 1) // self.page_size
+        if total_pages == 0:
+            total_pages = 1
+        self.page_label.configure(text=f"Página {self.current_page} de {total_pages}")
+    
+    def pagina_anterior(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.carregar_dados_lista(search=self.search_var.get(), page=self.current_page)
+    
+    def pagina_proxima(self):
+        total_pages = (self.total_records + self.page_size - 1) // self.page_size
+        if self.current_page < total_pages:
+            self.current_page += 1
+            self.carregar_dados_lista(search=self.search_var.get(), page=self.current_page)
+    
+    def buscar_com_reset(self):
+        self.current_page = 1
+        self.carregar_dados_lista(search=self.search_var.get(), page=self.current_page)
+            
+    def editar_documento(self):
+        item = self.tabela.focus()
+        if not item:
+            messagebox.showwarning("Aviso", "Selecione um documento na lista para editar!")
+            return
+
+        values = self.tabela.item(item)['values']
+        tipo_documento = values[0]
+        numero = values[1]
+        
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
+        row = c.fetchone()
+        conn.close()
+        
+        if not row:
+            messagebox.showerror("Erro", "Registro não encontrado no banco de dados.")
+            return
+
+        col_names = [description[0] for description in c.description]
+        dados = dict(zip(col_names, row))
+        
+        # Preencher campos
+        self.campos_edit["cliente"].delete(0, tk.END)
+        self.campos_edit["cliente"].insert(0, dados.get("cliente", ""))
+        
+        self.campos_edit["modelo"].delete(0, tk.END)
+        self.campos_edit["modelo"].insert(0, dados.get("modelo", ""))
+        
+        self.tel_var_edit.set(dados.get("telefone", ""))
+        
+        self.campos_edit["data_entrada"].delete(0, tk.END)
+        self.campos_edit["data_entrada"].insert(0, dados.get("entrada", ""))
+        
+        self.campos_edit["imei"].delete(0, tk.END)
+        self.campos_edit["imei"].insert(0, dados.get("imei", ""))
+        
+        self.campos_edit["senha"].delete(0, tk.END)
+        self.campos_edit["senha"].insert(0, dados.get("senha", ""))
+        
+        self.campos_edit["acessorios"].delete(0, tk.END)
+        self.campos_edit["acessorios"].insert(0, dados.get("acessorios", ""))
+        
+        self.campos_edit["tipo_garantia"].set(dados.get("tipo_garantia", "Com Garantia"))
+        
+        self.campos_edit["metodo_pagamento"].set(dados.get("metodo_pagamento", "CARTÃO"))
+        
+        self.campos_edit["valor"].delete(0, tk.END)
+        self.campos_edit["valor"].insert(0, dados.get("valor", "0,00"))
+        
+        self.campos_edit["situacao"].set(dados.get("situacao", "EM ABERTO"))
+        
+        dias = f"{dados.get('dias_garantia', 90)} Dias"
+        self.campos_edit["dias_garantia"].set(dias)
+        
+        # Checklist
+        checklist_str = dados.get("checklist", "")
+        itens_check = [item.split(':')[0] for item in checklist_str.split(';') if item.strip()]
+        for item in self.checklist_vars_edit:
+            if item in itens_check:
+                self.checklist_vars_edit[item].set("Sim")
+            else:
+                self.checklist_vars_edit[item].set("Não")
+        
+        # Detalhe
+        self.campos_edit["problemas_detalhe"].delete(0, tk.END)
+        self.campos_edit["problemas_detalhe"].insert(0, dados.get("problemas", ""))
+        
+        # Armazenar dados originais para edição
+        self.dados_originais = dados
+        
+        # Mostrar tela de edição
+        self.show_frame("Editar")
+
+    def salvar_edicao(self):
+        # Validação
+        cliente = self.campos_edit["cliente"].get().strip()
+        telefone = self.campos_edit["telefone"].get().strip()
+        modelo = self.campos_edit["modelo"].get().strip()
+        valor_str = self.campos_edit["valor"].get().strip()
+        
+        if not all([cliente, telefone, modelo, valor_str]):
+            messagebox.showwarning("Aviso", "Os campos 'Cliente', 'Telefone', 'Modelo/Produto' e 'Valor (R$)' são obrigatórios.")
+            return
+
+        try:
+            total_float = parse_monetario_to_float(valor_str)
+            valor_texto = formatar_monetario(total_float)
+        except ValueError:
+            messagebox.showerror("Erro de Valor", "Formato de valor (R$) inválido.")
+            return
+
+        # Coletar dados
+        entrada = self.campos_edit["data_entrada"].get().strip()
+        imei = self.campos_edit["imei"].get().strip()
+        senha = self.campos_edit["senha"].get().strip()
+        acessorios = self.campos_edit["acessorios"].get().strip()
+        problemas = self.campos_edit["problemas_detalhe"].get().strip()
+        situacao = self.campos_edit["situacao"].get()
+        tipo_garantia = self.campos_edit["tipo_garantia"].get()
+        metodo_pagamento = self.campos_edit["metodo_pagamento"].get()
+        tipo_documento = self.dados_originais["tipo_documento"]
+        numero = self.dados_originais["numero"]
+
+        saida = ""
+        if situacao == "CONCLUÍDA":
+            saida = datetime.now().strftime("%d/%m/%Y")
+
+        dias_garantia_texto = self.campos_edit["dias_garantia"].get().replace(" Dias", "")
+        try:
+            dias_garantia_num = int(dias_garantia_texto) if dias_garantia_texto.isdigit() else 0
+        except:
+            dias_garantia_num = 0
+
+        garantia = "S/Garantia"
+        if situacao == "CONCLUÍDA" and tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
+            try:
+                data_base = datetime.strptime(entrada, "%d/%m/%Y")
+                data_garantia = data_base + timedelta(days=dias_garantia_num)
+                garantia = data_garantia.strftime("%d/%m/%Y")
+            except ValueError:
+                data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
+                garantia = data_garantia.strftime("%d/%m/%Y")
+
+        checklist_data = [f"{item}:{var.get()}" for item, var in self.checklist_vars_edit.items()]
+        checklist_str = ";".join(checklist_data)
+
+        # Estrutura dados
+        dados_atualizados = {
+            "cliente": cliente,
+            "telefone": telefone,
+            "modelo": modelo,
+            "imei": imei,
+            "senha": senha,
+            "acessorios": acessorios,
+            "problemas": problemas,
+            "situacao": situacao,
+            "valor": valor_texto,
+            "entrada": entrada,
+            "saida": saida,
+            "garantia": garantia,
+            "tipo_garantia": tipo_garantia,
+            "metodo_pagamento": metodo_pagamento,
+            "checklist": checklist_str,
+            "dias_garantia": dias_garantia_num
+        }
+        
+        # Gerar novo PDF
+        dados_para_pdf = dados_atualizados.copy()
+        dados_para_pdf["numero"] = numero
+        caminho_pdf = gerar_documento(dados_para_pdf, valor_texto, total_float, tipo_garantia, metodo_pagamento, checklist_str, tipo_documento, dias_garantia_num)
+        
+        if not caminho_pdf:
+            messagebox.showerror("Erro", "Não foi possível regerar o documento.")
+            return
+
+        # Adicionar arquivo aos dados
+        dados_atualizados["arquivo"] = caminho_pdf
+
+        # Atualizar banco
+        try:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("""
+                UPDATE os SET cliente=?, telefone=?, modelo=?, imei=?, senha=?, acessorios=?, problemas=?, 
+                situacao=?, valor=?, entrada=?, saida=?, garantia=?, tipo_garantia=?, metodo_pagamento=?, 
+                checklist=?, dias_garantia=?, arquivo=? 
+                WHERE numero=? AND tipo_documento=?
+            """, tuple(dados_atualizados.values()) + (numero, tipo_documento))
+            conn.commit()
+            conn.close()
+            
+            messagebox.showinfo("Sucesso", f"{tipo_documento} {numero} atualizado com sucesso!")
+            
+            # Voltar para lista e recarregar
+            self.show_frame("Lista")
+            self.buscar_com_reset()
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Erro no DB", f"Erro ao atualizar no banco de dados: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Erro Inesperado", f"Erro: {str(e)}")
+
     def deletar(self):
         """Deleta o registro selecionado e seu arquivo PDF associado."""
         item = self.tabela.focus()
@@ -1168,7 +1577,7 @@ class SistemaOS:
                     os.remove(caminho_pdf)
                 
                 messagebox.showinfo("Sucesso", f"Documento {numero} deletado e arquivo PDF removido.")
-                self.carregar_dados_lista(search=self.search_var.get())
+                self.buscar_com_reset()
 
             except sqlite3.Error as e:
                 messagebox.showerror("Erro", f"Erro ao deletar no banco de dados: {str(e)}")
