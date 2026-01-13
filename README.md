@@ -15,14 +15,14 @@ Sistema de gestão de Ordens de Serviço (OS) e Vendas para assistência técnic
 ## Requisitos
 
 - Python 3.7+
-- Tkinter (geralmente já vem com Python)
+- CustomTkinter (para a interface moderna)
 - ReportLab
 - Pillow (PIL)
 
 ## Instalação
 
 ```bash
-pip install reportlab pillow
+pip install customtkinter reportlab pillow
 ```
 
 ## Como Usar
@@ -52,4 +52,3 @@ pyinstaller --onefile --windowed --icon=logo.ico --add-data "logo.png;." Os.py
 ## Licença
 
 Este projeto é de uso privado.
-
