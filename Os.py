@@ -93,7 +93,7 @@ def abrir_arquivo(caminho):
 APP_DIR = get_app_directory()
 DB_NAME = os.path.join(APP_DIR, "os_dipcell.db")
 PASTA_OS = os.path.join(APP_DIR, "OS_DIPCELL")
-LOGO_PADRAO = resource_path("logo.png") 
+LOGO_PADRAO = resource_path("logo2.png") 
 
 
 # ==========================================================
@@ -510,6 +510,18 @@ class SistemaOS:
         master.geometry("1200x800") # Definir um tamanho inicial maior
         master.configure(fg_color=COR_FUNDO) # Aplicar cor de fundo principal
         
+        # Configuração de Ícone (Compatível com PyInstaller)
+        try:
+            # Tenta carregar logo.ico para a janela/barra de tarefas
+            icon_path = resource_path("logo.ico")
+            if os.path.exists(icon_path):
+                master.iconbitmap(icon_path)
+            # Se não tiver ico, ou além disso, define o ícone da janela via imagem (Linux/Fallback)
+            elif os.path.exists(LOGO_PADRAO):
+                master.iconphoto(False, ImageTk.PhotoImage(PILImage.open(LOGO_PADRAO)))
+        except Exception as e:
+            print(f"Aviso: Não foi possível definir o ícone: {e}")
+        
         # Configuração do estilo da Treeview (necessária, pois CTk não a substitui)
         style = ttk.Style()
         style.theme_use('clam') 
@@ -722,7 +734,7 @@ class SistemaOS:
         # Logo (Usa CTkImage para compatibilidade de tema)
         if os.path.exists(LOGO_PADRAO):
             try:
-                logo_img = ctk.CTkImage(PILImage.open(LOGO_PADRAO), size=(120, 120))
+                logo_img = ctk.CTkImage(light_image=PILImage.open(LOGO_PADRAO), size=(200, 200))
                 logo_label = ctk.CTkLabel(center_frame, image=logo_img, text="")
                 logo_label.pack(pady=(0, 20))
                 self.logo = logo_img # Manter referência
@@ -1100,7 +1112,7 @@ class SistemaOS:
         # Logo, se existir
         if os.path.exists(LOGO_PADRAO):
             try:
-                logo_img_edit = ctk.CTkImage(PILImage.open(LOGO_PADRAO), size=(80, 80))
+                logo_img_edit = ctk.CTkImage(light_image=PILImage.open(LOGO_PADRAO), size=(100, 100))
                 logo_label_edit = ctk.CTkLabel(center_frame, image=logo_img_edit, text="")
                 logo_label_edit.pack(pady=(0, 10))
                 self.logo_edit = logo_img_edit
