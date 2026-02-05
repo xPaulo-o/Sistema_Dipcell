@@ -1,506 +1,24 @@
-# SISTEMA DE OS DIPCELL (COM CHECKLIST, ATUALIZAÇÃO, VALOR E FUNÇÃO VENDAS)
-
-import os
-import sys 
-import sqlite3
-from datetime import datetime, timedelta
-import tkinter as tk # Manter tkinter para constantes (tk.END) e Treeview
+import tkinter as tk
 from tkinter import ttk, messagebox
-import threading
-import json
-
-# NOVO: Importa CustomTkinter
 import customtkinter as ctk
-
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-
-from reportlab.pdfgen import canvas
-from reportlab.lib.colors import grey
-
+from datetime import datetime, timedelta
+import json
+import os
 from PIL import Image as PILImage, ImageTk
 
-# ==========================================================
-# CONFIGURAÇÃO CUSTOMTKINTER
-# ==========================================================
-
-# Define a aparência padrão como "Dark" (Escuro) e o tema padrão como "green"
-ctk.set_appearance_mode("Dark") 
-ctk.set_default_color_theme("green") 
-
-# Constantes de Cor
-COR_FUNDO = "#1C1C1C" # Um cinza mais escuro, próximo do preto
-COR_FRAME = "#2A2D2E" # Um cinza um pouco mais claro para os frames
-COR_TEXTO = "#FFFFFF"
-COR_VERDE_PRINCIPAL = '#2E8B57' 
-COR_VERMELHO = "#DC3545" 
-COR_AZUL = "#007BFF" 
-COR_HOVER_VERDE = "#38a366" # Variação mais clara para o hover, mais moderno
-COR_BORDA = "#444444"
-
-# Fontes
-FONTE_TITULO = ("Roboto", 20, "bold")
-FONTE_NORMAL = ("Roboto", 12)
-FONTE_BOLD = ("Roboto", 12, "bold")
-
-# ==========================================================
-# FUNÇÕES AUXILIARES PARA COMPATIBILIDADE E ROBUSTEZ
-# ==========================================================
-
-def resource_path(relative_path):
-    """Obtém o caminho absoluto para o recurso, funciona para desenvolvimento e para PyInstaller."""
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
-
-def get_app_directory():
-    """Retorna o diretório onde o executável está rodando (ou o diretório do script)."""
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    else:
-        return os.path.dirname(os.path.abspath(__file__))
-
-def abrir_arquivo(caminho):
-    """Abre um arquivo de forma compatível com Windows, Linux e Mac."""
-    try:
-        if sys.platform == "win32":
-            os.startfile(caminho)
-        elif sys.platform == "darwin":  # macOS
-            os.system(f"open '{caminho}'")
-        else:  # Linux e outros
-            os.system(f"xdg-open '{caminho}'")
-    except Exception as e:
-        try:
-            import subprocess
-            subprocess.Popen([caminho], shell=True)
-        except Exception as e2:
-            try:
-                messagebox.showerror("Erro", f"Não foi possível abrir o arquivo:\n{caminho}\n\nErro: {str(e2)}")
-            except:
-                print(f"Erro ao abrir arquivo {caminho}: {str(e2)}")
-
-# ==========================================================
-
-# Caminhos usando o diretório do aplicativo
-APP_DIR = get_app_directory()
-DB_NAME = os.path.join(APP_DIR, "os_dipcell.db")
-PASTA_OS = os.path.join(APP_DIR, "OS_DIPCELL")
-LOGO_PADRAO = resource_path("logo2.png") 
-
-
-# ==========================================================
-# BANCO DE DADOS + MIGRAÇÃO (SEM ALTERAÇÕES)
-# ==========================================================
-
-def criar_banco():
-    # Código da função criar_banco (mantido inalterado)
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS os (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                numero TEXT,
-                cliente TEXT,
-                telefone TEXT,
-                modelo TEXT,
-                imei TEXT,
-                senha TEXT,
-                acessorios TEXT,
-                problemas TEXT,
-                situacao TEXT,
-                valor TEXT,
-                entrada TEXT,
-                saida TEXT,
-                garantia TEXT,
-                arquivo TEXT,
-                tipo_garantia TEXT,
-                metodo_pagamento TEXT,
-                checklist TEXT,
-                dias_garantia INTEGER,
-                tipo_documento TEXT 
-            )
-        ''')
-        conn.commit()
-
-        # Verificar colunas e adicionar caso faltem (MIGRAÇÃO)
-        c.execute("PRAGMA table_info(os)")
-        cols = [row[1] for row in c.fetchall()]
-
-        obrig = {
-            "garantia": "TEXT",
-            "saida": "TEXT",
-            "tipo_garantia": "TEXT",
-            "metodo_pagamento": "TEXT",
-            "checklist": "TEXT", 
-            "dias_garantia": "INTEGER",
-            "tipo_documento": "TEXT",
-            "parcelas": "INTEGER",
-            "detalhes_parcelas": "TEXT"
-        }
-
-        for col, tipo in obrig.items():
-            if col not in cols:
-                try:
-                    if col == "dias_garantia":
-                        default_val = "90"
-                    elif col == "tipo_documento":
-                        default_val = "'OS'"
-                    elif col == "parcelas":
-                        default_val = "1"
-                    else:
-                        default_val = "'Com Garantia'"
-                        
-                    c.execute(f"ALTER TABLE os ADD COLUMN {col} {tipo} DEFAULT {default_val}")
-                    conn.commit()
-                except sqlite3.Error as e:
-                    print(f"Aviso: Não foi possível adicionar coluna {col}: {e}")
-                    pass
-
-        # Adicionar índices para melhor performance
-        indices = [
-            "CREATE INDEX IF NOT EXISTS idx_numero ON os (numero)",
-            "CREATE INDEX IF NOT EXISTS idx_cliente ON os (cliente)",
-            "CREATE INDEX IF NOT EXISTS idx_modelo ON os (modelo)",
-            "CREATE INDEX IF NOT EXISTS idx_imei ON os (imei)",
-            "CREATE INDEX IF NOT EXISTS idx_problemas ON os (problemas)",
-            "CREATE INDEX IF NOT EXISTS idx_tipo_documento ON os (tipo_documento)",
-            "CREATE INDEX IF NOT EXISTS idx_situacao ON os (situacao)",
-            "CREATE INDEX IF NOT EXISTS idx_entrada ON os (entrada)"
-        ]
-        for idx in indices:
-            try:
-                c.execute(idx)
-                conn.commit()
-            except sqlite3.Error as e:
-                print(f"Aviso: Não foi possível criar índice: {e}")
-
-        conn.close()
-    except sqlite3.Error as e:
-        messagebox.showerror("Erro Crítico", 
-            f"Erro ao criar/acessar o banco de dados:\n{str(e)}\n\n"
-            f"Verifique se você tem permissões de escrita no diretório:\n{APP_DIR}")
-        sys.exit(1)
-    except Exception as e:
-        messagebox.showerror("Erro Crítico", 
-            f"Erro inesperado ao inicializar o banco de dados:\n{str(e)}")
-        sys.exit(1)
-
-
-# ==========================================================
-# FUNÇÕES AUXILIARES (mantidas)
-# ==========================================================
-
-def parse_monetario_to_float(txt):
-    if not txt:
-        return 0.0
-    txt = txt.replace(",", ".")
-    return float(txt.replace(".", "", txt.count(".") - 1) or 0) 
-
-def formatar_monetario(v):
-    return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def aplicar_mascara_tel(raw):
-    nums = "".join(ch for ch in raw if ch.isdigit())
-    if len(nums) <= 2:
-        return f"({nums}"
-    if len(nums) <= 6:
-        return f"({nums[:2]}) {nums[2:]}"
-    if len(nums) <= 10:
-        return f"({nums[:2]}) {nums[2:6]}-{nums[6:]}"
-    nums = nums[:11]
-    return f"({nums[:2]}) {nums[2:7]}-{nums[7:]}"
-
-
-# ==========================================================
-# GERAR PDF (mantida)
-# ==========================================================
-
-def gerar_documento(dados, valor_texto, total_float, tipo_garantia, metodo_pagamento, checklist_str, tipo_documento, dias_garantia_num, parcelas_info=None):
-    # Código da função gerar_documento (mantido inalterado)
-    
-    # 1. Tratamento de campos vazios para N/A
-    for k, v in dados.items():
-        if v is None or (isinstance(v, str) and v.strip() == ""):
-            dados[k] = "N/A"
-            
-    try:
-        if not os.path.exists(PASTA_OS):
-            try:
-                os.makedirs(PASTA_OS, exist_ok=True)
-            except OSError as e:
-                messagebox.showerror("Erro", 
-                    f"Não foi possível criar a pasta de documentos:\n{PASTA_OS}\n\n"
-                    f"Erro: {str(e)}\n\n"
-                    f"Verifique as permissões do diretório.")
-                return None
-    except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao verificar/criar pasta: {str(e)}")
-        return None
-
-    pdf_path = os.path.join(PASTA_OS, f"{tipo_documento}_{dados['numero'].split('-')[1]}.pdf")
-
-    doc = SimpleDocTemplate(
-        pdf_path,
-        pagesize=A4,
-        leftMargin=2*cm,
-        rightMargin=2*cm,
-        topMargin=1.5*cm, 
-        bottomMargin=1.5*cm 
-    )
-
-    styles = getSampleStyleSheet()
-    normal = styles["Normal"]
-
-    titulo_doc = "Ordem de Serviço" if tipo_documento == "OS" else "Comprovante de Venda"
-
-    titulo = Paragraph(
-        f"<b>DIPCELL<br/>{titulo_doc}</b>",
-        ParagraphStyle("t", parent=styles["Heading1"], alignment=1, fontSize=22)
-    )
-
-    if os.path.exists(LOGO_PADRAO):
-        img = Image(LOGO_PADRAO, width=120, height=120) 
-    else:
-        img = Paragraph("", normal)
-
-    header = Table([[img, titulo]], colWidths=[160, 330])
-    header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
-
-    story = [header, Spacer(1, 10)] 
-
-    def bloco(titulo, lista):
-        story.append(Paragraph(
-            f"<b>{titulo}</b>",
-            ParagraphStyle("t2", parent=styles["Heading2"], fontSize=14)
-        ))
-
-        rows = [[Paragraph(f"<b>{k}</b>"), Paragraph(str(v))] for k, v in lista]
-
-        tbl = Table(rows, colWidths=[160, 330])
-        tbl.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, 0), 0.6, colors.grey),
-            ("GRID", (0, 1), (-1, -1), 0.6, colors.grey),
-            ("BACKGROUND", (0, 0), ( -1, 0), colors.whitesmoke)
-        ]))
-
-        story.append(tbl)
-        story.append(Spacer(1, 4)) 
-
-    def bloco_checklist(titulo, checklist_str):
-        story.append(Paragraph(
-            f"<b>{titulo}</b>",
-            ParagraphStyle("t2", parent=styles["Heading2"], fontSize=14)
-        ))
-        
-        rows = []
-        itens = [item.split(':') for item in checklist_str.split(';') if item.strip()]
-
-        NUM_COLUNAS = 3
-        
-        num_itens = len(itens)
-        if num_itens == 0:
-            return
-            
-        num_linhas = (num_itens + NUM_COLUNAS - 1) // NUM_COLUNAS
-        
-        itens_preenchidos = itens + [("", "")] * (num_linhas * NUM_COLUNAS - num_itens)
-            
-        rows = []
-        
-        for i in range(num_linhas):
-            row_data = []
-            for j in range(NUM_COLUNAS):
-                idx = i + j * num_linhas
-                
-                item, status = itens_preenchidos[idx]
-                
-                if item:
-                    check_char = "X" if status == "Sim" else " "
-                    
-                    paragrafo = Paragraph(
-                        f"<font size='8'>[{check_char}] <b>{item}</b></font>", 
-                        ParagraphStyle("s", parent=normal, alignment=0, leading=8) 
-                    )
-                else:
-                    paragrafo = Paragraph("", normal)
-
-                row_data.append(paragrafo)
-            
-            rows.append(row_data)
-
-        col_widths = [5.66*cm] * NUM_COLUNAS 
-        
-        tbl = Table(rows, colWidths=col_widths)
-        tbl.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
-        ]))
-        
-        story.append(tbl)
-        story.append(Spacer(1, 4)) 
-
-    def bloco_parcelas(detalhes_parcelas_json):
-        try:
-            lista_parcelas = json.loads(detalhes_parcelas_json)
-        except:
-            return
-
-        story.append(Paragraph(
-            f"<b>Parcelamento (Crediário)</b>",
-            ParagraphStyle("t2", parent=styles["Heading2"], fontSize=14)
-        ))
-
-        # Cabeçalho da tabela
-        rows = [["Parcela", "Vencimento", "Valor", "Situação"]]
-        
-        for p in lista_parcelas:
-            # Cria um espaço visual para marcar PG ou N/PG
-            status_visual = "  (  ) PG    (  ) N/PG  "
-            rows.append([f"{p['numero']}x", p['vencimento'], f"R$ {p['valor']}", status_visual])
-
-        tbl = Table(rows, colWidths=[60, 100, 100, 230])
-        tbl.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.6, colors.grey),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ]))
-        story.append(tbl)
-        story.append(Spacer(1, 4))
-
-    bloco("Dados do Cliente", [
-        (f"Número {tipo_documento}", dados["numero"]), 
-        ("Cliente", dados["cliente"]),
-        ("Telefone", dados["telefone"]),
-        ("Data", dados["entrada"])
-    ])
-
-    if tipo_documento == "OS":
-        bloco("Aparelho", [
-            ("Modelo", dados["modelo"]),
-            ("IMEI", dados["imei"]),
-            ("Acessórios", dados["acessorios"]),
-            ("Senha/Padrão", dados["senha"])
-        ])
-        
-        bloco_checklist("Lista de Checagem do Aparelho", checklist_str)
-        
-        problema_titulo = "Problemas / Detalhe"
-    
-    else: 
-        bloco("Produto Vendido", [
-            ("Produto", dados["modelo"]), 
-            ("Detalhes", dados["acessorios"]) 
-        ])
-        
-        problema_titulo = "Detalhe (Venda)"
-
-
-    bloco(titulo_doc, [ 
-        (problema_titulo, dados["problemas"] if tipo_documento == "OS" else "Ver Produto Vendido"), 
-        ("Situação" if tipo_documento == "OS" else "Status", dados["situacao"]),
-        ("Valor (R$)", valor_texto),
-        ("Total (R$)", formatar_monetario(total_float)),
-        ("Método Pgto.", metodo_pagamento), 
-        ("Saída", dados["saida"] if dados["saida"] else "N/A"), # Alterado para N/A se vazio
-        ("Garantia até", dados["garantia"]),
-        ("Tipo de Garantia", tipo_garantia) 
-    ])
-
-    if metodo_pagamento == "PARCELADO NO CREDIÁRIO" and parcelas_info:
-        bloco_parcelas(parcelas_info)
-
-    AVISO_PAGAMENTO = "NÃO SERÁ ENTREGUE O APARELHO/PRODUTO SEM ANTES ACERTAR O PAGAMENTO. "
-    dias_garantia_texto = f"{dias_garantia_num} dias" if dias_garantia_num > 0 else "legal"
-    termo_texto = ""
-    
-    if tipo_documento == "OS":
-        if dados["situacao"] == "CONCLUÍDA" and tipo_garantia == "Com Garantia": # Condição alterada
-            termo_texto = (
-                f"<font size='8'><b>{AVISO_PAGAMENTO}</b> A garantia cobre exclusivamente o **serviço** realizado pelo período de **{dias_garantia_texto}** informado nesta OS. "
-                "Não cobre danos causados por mau uso, queda, oxidação, danos líquidos, tela quebrada ou violação do lacre. "
-                "O aparelho deve ser retirado em até 90 dias após a conclusão do serviço.</font>"
-            )
-        else: 
-            termo_texto = ( # Se não for Concluída ou for Sem Garantia
-                f"<font size='8'><b>{AVISO_PAGAMENTO} SERVIÇO SEM GARANTIA!</b> Esta OS está como <b>{dados['situacao']}</b>. O cliente está ciente de que o serviço realizado "
-                "não possui cobertura de garantia devido à situação, natureza do reparo/peça ou condição do aparelho. "
-                "O aparelho deve ser retirado em até 90 dias após a conclusão do serviço.</font>"
-            )
-            
-    else: 
-        if dados["situacao"] == "CONCLUÍDA" and tipo_garantia == "Com Garantia": # Condição alterada
-            termo_texto = (
-                f"<font size='8'><b>{AVISO_PAGAMENTO}</b> A garantia de **{dias_garantia_texto}** cobre somente se o produto apresentar "
-                "problemas de fábrica e estiver com a caixa do mesmo. "
-                "A garantia **NÃO COBRE** danos por mau uso, queda, oxidação, danos líquidos ou remoção de selos de garantia.</font>"
-            )
-        else: 
-            termo_texto = ( # Se não for Concluída ou for Sem Garantia
-                f"<font size='8'><b>{AVISO_PAGAMENTO} PRODUTO VENDIDO SEM GARANTIA!</b> O cliente está ciente de que este produto "
-                "não possui cobertura de garantia (Status: {dados['situacao']}).</font>"
-            )
-
-
-    termo = Paragraph(termo_texto, normal)
-
-    story.append(Spacer(1, 3)) 
-    story.append(termo)
-    story.append(Spacer(1, 3)) 
-
-    assinatura_tbl = Table([
-        ["__________________________________", "__________________________________"],
-        ["Assinatura do Cliente", "Assinatura da Loja"]
-    ], colWidths=[245, 245])
-
-    assinatura_tbl.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-    ]))
-
-    story.append(Spacer(1, 2)) 
-    story.append(assinatura_tbl)
-    story.append(Spacer(1, 3))
-
-    def desenhar_borda(canvas, doc):
-        canvas.saveState()
-        W, H = A4
-        canvas.setStrokeColor(colors.black)
-        canvas.setLineWidth(1)
-        canvas.rect(12, 12, W - 24, H - 24)
-        canvas.setLineWidth(0.8)
-        canvas.rect(20, 20, W - 40, H - 40)
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(grey)
-        canvas.drawCentredString(W/2, 35, "DIPCELL — Sistema de OS/Vendas")
-        canvas.restoreState()
-
-    try:
-        doc.build(story, onFirstPage=desenhar_borda, onLaterPages=desenhar_borda)
-        return pdf_path
-    except Exception as e:
-        messagebox.showerror("Erro ao Gerar PDF", 
-            f"Erro ao gerar o documento PDF:\n{str(e)}\n\n"
-            f"Verifique se você tem permissões de escrita no diretório:\n{PASTA_OS}")
-        return None
-
-
-# ==========================================================
-# INTERFACE CUSTOMTKINTER
-# ==========================================================
+from .config import (
+    COR_FUNDO, COR_FRAME, COR_TEXTO, COR_VERDE_PRINCIPAL, COR_VERMELHO,
+    COR_AZUL, COR_HOVER_VERDE, COR_BORDA, FONTE_TITULO, FONTE_NORMAL,
+    FONTE_BOLD, LOGO_PADRAO, resource_path
+)
+from .utils import (
+    parse_monetario_to_float, formatar_monetario, aplicar_mascara_tel, abrir_arquivo
+)
+from .database import (
+    get_next_document_number, insert_document, list_documents,
+    fetch_document, update_document, delete_document
+)
+from .pdf_generator import gerar_documento
 
 class SistemaOS:
 
@@ -513,7 +31,7 @@ class SistemaOS:
         # Configuração de Ícone (Compatível com PyInstaller)
         try:
             # Tenta carregar logo.ico para a janela/barra de tarefas
-            icon_path = resource_path("logo.ico")
+            icon_path = resource_path(os.path.join("public", "logo.ico"))
             if os.path.exists(icon_path):
                 master.iconbitmap(icon_path)
             # Se não tiver ico, ou além disso, define o ícone da janela via imagem (Linux/Fallback)
@@ -547,8 +65,6 @@ class SistemaOS:
         self.container = ctk.CTkFrame(master, fg_color="transparent")
         self.container.pack(side="top", fill="both", expand=True, padx=10, pady=10)
 
-        # master.grid_rowconfigure(0, weight=1) # Usando pack agora
-        # master.grid_columnconfigure(0, weight=1)
         self.container.grid_rowconfigure(0, weight=1)
         self.container.grid_columnconfigure(0, weight=1)
 
@@ -572,28 +88,12 @@ class SistemaOS:
         self.show_frame("Preenchimento")
         self.gerar_numero_documento() 
         
-    # Funções de numeração (mantidas)
-    def gerar_numero_os(self):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT MAX(CAST(SUBSTR(numero, 4) AS INTEGER)) FROM os WHERE tipo_documento='OS'")
-        max_os_num = c.fetchone()[0] or 0
-        self.numero_documento = f"OS-{max_os_num+1:04d}"
-        conn.close()
-        
-    def gerar_numero_venda(self):
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT MAX(CAST(SUBSTR(numero, 7) AS INTEGER)) FROM os WHERE tipo_documento='VENDA'")
-        max_venda_num = c.fetchone()[0] or 0
-        self.numero_documento = f"VENDA-{max_venda_num+1:04d}"
-        conn.close()
-        
     def gerar_numero_documento(self):
-        if self.tipo_documento_var.get() == "OS":
-            self.gerar_numero_os()
-        else:
-            self.gerar_numero_venda()
+        try:
+            self.numero_documento = get_next_document_number(self.tipo_documento_var.get())
+        except Exception as e:
+            print(f"Erro ao gerar número: {e}")
+            self.numero_documento = "ERRO"
 
     def show_frame(self, page_name):
         frame = self.frames[page_name]
@@ -1403,17 +903,7 @@ class SistemaOS:
         if caminho_pdf:
             # 5. Inserção no Banco de Dados
             try:
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                
-                cols = ", ".join(dados_db.keys())
-                placeholders = ", ".join("?" * len(dados_db))
-                values = tuple(dados_db.values()) + (caminho_pdf,)
-                
-                c.execute(f"INSERT INTO os ({cols}, arquivo) VALUES ({placeholders}, ?)", values)
-                
-                conn.commit()
-                conn.close()
+                insert_document(dados_db, caminho_pdf)
                 
                 messagebox.showinfo("Sucesso", f"{tipo_documento} {numero} salva com sucesso e PDF gerado:\n{caminho_pdf}")
                 
@@ -1421,76 +911,41 @@ class SistemaOS:
                 
                 self.limpar()
 
-            except sqlite3.Error as e:
-                messagebox.showerror("Erro no DB", f"Erro ao salvar no banco de dados: {str(e)}")
             except Exception as e:
-                messagebox.showerror("Erro Inesperado", f"Erro: {str(e)}")
+                messagebox.showerror("Erro no DB", f"Erro ao salvar no banco de dados: {str(e)}")
         else:
             messagebox.showerror("Erro", f"Não foi possível salvar o documento.")
 
     def carregar_dados_lista(self, search="", page=1):
         """Carrega os dados do banco para a Treeview, aplicando filtro de busca e paginação."""
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
         
         for item in self.tabela.get_children():
             self.tabela.delete(item)
 
-        # Contar total de registros para paginação
-        count_query = "SELECT COUNT(*) FROM os"
-        count_params = []
-        if search:
-            search_pattern = f"%{search}%"
-            count_query += " WHERE numero LIKE ? OR cliente LIKE ? OR modelo LIKE ? OR imei LIKE ? OR problemas LIKE ?"
-            count_params = [search_pattern] * 5
-        
-        c.execute(count_query, count_params)
-        self.total_records = c.fetchone()[0]
-        
         # Calcular offset
         offset = (page - 1) * self.page_size
         
-        query = "SELECT * FROM os"
-        params = []
-        
-        if search:
-            search_pattern = f"%{search}%"
-            query += " WHERE numero LIKE ? OR cliente LIKE ? OR modelo LIKE ? OR imei LIKE ? OR problemas LIKE ?"
-            params = [search_pattern] * 5 
-
-        query += " ORDER BY id DESC LIMIT ? OFFSET ?"
-        params.extend([self.page_size, offset])
-        
         try:
-            c.execute(query, params)
-            rows = c.fetchall()
-            conn.close()
-
-            col_names = [description[0] for description in c.description]
-            
-            def get_val(row, name):
-                try:
-                    return row[col_names.index(name)]
-                except ValueError:
-                    return "" 
+            rows, total = list_documents(search, self.page_size, offset)
+            self.total_records = total
 
             for row in rows:
-                tipo = get_val(row, "tipo_documento")
-                numero = get_val(row, "numero")
-                cliente = get_val(row, "cliente")
-                modelo = get_val(row, "modelo")
-                entrada = get_val(row, "entrada")
-                saida = get_val(row, "saida") or "N/A" # Se for None, exibe N/A
-                garantia = get_val(row, "garantia")
-                situacao = get_val(row, "situacao")
-                arquivo = get_val(row, "arquivo") 
+                tipo = row.get("tipo_documento", "")
+                numero = row.get("numero", "")
+                cliente = row.get("cliente", "")
+                modelo = row.get("modelo", "")
+                entrada = row.get("entrada", "")
+                saida = row.get("saida") or "N/A" # Se for None, exibe N/A
+                garantia = row.get("garantia", "")
+                situacao = row.get("situacao", "")
+                arquivo = row.get("arquivo", "")
 
                 self.tabela.insert("", tk.END, values=(tipo, numero, cliente, modelo, entrada, saida, garantia, situacao, arquivo))
 
             # Atualizar controles de paginação
             self.atualizar_controle_paginacao()
 
-        except sqlite3.Error as e:
+        except Exception as e:
             messagebox.showerror("Erro de Leitura", f"Erro ao carregar dados do banco: {str(e)}")
             
     def atualizar_controle_paginacao(self):
@@ -1530,19 +985,12 @@ class SistemaOS:
         else:
             metodo_combo.configure(values=["CARTÃO", "DINHEIRO", "PIX", "PARCELADO NO CREDIÁRIO"])
         
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT * FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
-        row = c.fetchone()
-        conn.close()
+        dados = fetch_document(numero, tipo_documento)
         
-        if not row:
+        if not dados:
             messagebox.showerror("Erro", "Registro não encontrado no banco de dados.")
             return
 
-        col_names = [description[0] for description in c.description]
-        dados = dict(zip(col_names, row))
-        
         # Preencher campos
         self.campos_edit["cliente"].delete(0, tk.END)
         self.campos_edit["cliente"].insert(0, dados.get("cliente", ""))
@@ -1718,16 +1166,7 @@ class SistemaOS:
 
         # Atualizar banco
         try:
-            conn = sqlite3.connect(DB_NAME)
-            c = conn.cursor()
-            c.execute("""
-                UPDATE os SET cliente=?, telefone=?, modelo=?, imei=?, senha=?, acessorios=?, problemas=?, 
-                situacao=?, valor=?, entrada=?, saida=?, garantia=?, tipo_garantia=?, metodo_pagamento=?, 
-                checklist=?, dias_garantia=?, parcelas=?, detalhes_parcelas=?, arquivo=? 
-                WHERE numero=? AND tipo_documento=?
-            """, tuple(dados_atualizados.values()) + (numero, tipo_documento))
-            conn.commit()
-            conn.close()
+            update_document(numero, tipo_documento, dados_atualizados)
             
             messagebox.showinfo("Sucesso", f"{tipo_documento} {numero} atualizado com sucesso!")
             
@@ -1735,10 +1174,8 @@ class SistemaOS:
             self.show_frame("Lista")
             self.buscar_com_reset()
             
-        except sqlite3.Error as e:
-            messagebox.showerror("Erro no DB", f"Erro ao atualizar no banco de dados: {str(e)}")
         except Exception as e:
-            messagebox.showerror("Erro Inesperado", f"Erro: {str(e)}")
+            messagebox.showerror("Erro no DB", f"Erro ao atualizar no banco de dados: {str(e)}")
 
     def deletar(self):
         """Deleta o registro selecionado e seu arquivo PDF associado."""
@@ -1754,11 +1191,7 @@ class SistemaOS:
 
         if messagebox.askyesno("Confirmação", f"Tem certeza que deseja deletar o documento {numero} ({tipo_documento})?"):
             try:
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                c.execute("DELETE FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
-                conn.commit()
-                conn.close()
+                delete_document(numero, tipo_documento)
 
                 if caminho_pdf and os.path.exists(caminho_pdf):
                     os.remove(caminho_pdf)
@@ -1766,254 +1199,8 @@ class SistemaOS:
                 messagebox.showinfo("Sucesso", f"Documento {numero} deletado e arquivo PDF removido.")
                 self.buscar_com_reset()
 
-            except sqlite3.Error as e:
+            except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao deletar no banco de dados: {str(e)}")
-            except OSError as e:
-                messagebox.showwarning("Aviso", f"Registro deletado do DB, mas o arquivo PDF não pôde ser removido.\nPode estar aberto em outro programa. Erro: {str(e)}")
-
-
-    def atualizar_status_documento(self):
-        """Atualiza o status (situação) de um registro e regera o PDF."""
-        item = self.tabela.focus()
-        if not item:
-            messagebox.showwarning("Aviso", "Selecione um documento na lista para atualizar o status!")
-            return
-
-        novo_status = self.novo_status_var.get()
-        values = self.tabela.item(item)['values']
-        tipo_documento = values[0]
-        numero = values[1]
-        
-        if novo_status == values[7]: # values[7] é a Situação/Status atual
-            messagebox.showinfo("Aviso", f"O status já é '{novo_status}'. Nenhuma alteração necessária.")
-            return
-
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT * FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
-        row = c.fetchone()
-        
-        if not row:
-            conn.close()
-            messagebox.showerror("Erro", "Registro não encontrado no banco de dados.")
-            return
-
-        col_names = [description[0] for description in c.description]
-        dados_db = dict(zip(col_names, row))
-        
-        # Atualiza o status e a data de saída (se necessário)
-        dados_db["situacao"] = novo_status 
-        
-        data_saida = ""
-        # Preenche a data de saída APENAS se o novo status for CONCLUÍDA
-        if novo_status == "CONCLUÍDA":
-             data_saida = datetime.now().strftime("%d/%m/%Y")
-        
-        dados_db["saida"] = data_saida
-        
-        # >>> NOVO: Recalcula a garantia com base no novo status <<<
-        
-        tipo_garantia = dados_db["tipo_garantia"]
-        dias_garantia_num = dados_db["dias_garantia"]
-        entrada = dados_db["entrada"] # Usa a data original de entrada
-        
-        novo_garantia = "S/Garantia" # Valor padrão
-        
-        if novo_status == "CONCLUÍDA" and tipo_garantia == "Com Garantia" and dias_garantia_num > 0:
-            try:
-                # Usa a data de entrada original para calcular a garantia
-                data_base = datetime.strptime(entrada, "%d/%m/%Y")
-                data_garantia = data_base + timedelta(days=dias_garantia_num)
-                novo_garantia = data_garantia.strftime("%d/%m/%Y")
-            except ValueError:
-                # Fallback, usa a data atual (improvável, mas seguro)
-                data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
-                novo_garantia = data_garantia.strftime("%d/%m/%Y")
-                
-        dados_db["garantia"] = novo_garantia # Atualiza o campo garantia
-        
-        # >>> FIM DA NOVA LÓGICA <<<
-        
-        # Garante que temos o valor monetário formatado para a regeração do PDF
-        valor_texto = dados_db["valor"]
-        try:
-            total_float = parse_monetario_to_float(valor_texto)
-        except ValueError:
-             total_float = 0.0 # Fallback
-        
-        # Corrigido o dicionário de dados para regeneração (baseado no código original)
-        dados_regeneracao = {
-            "numero": dados_db["numero"],
-            "cliente": dados_db["cliente"],
-            "telefone": dados_db["telefone"],
-            "modelo": dados_db["modelo"],
-            "imei": dados_db["imei"],
-            "senha": dados_db["senha"],
-            "acessorios": dados_db["acessorios"],
-            "problemas": dados_db["problemas"],
-            "situacao": dados_db["situacao"], # NOVO STATUS
-            "entrada": dados_db["entrada"],
-            "saida": dados_db["saida"],     # NOVA SAÍDA
-            "garantia": dados_db["garantia"] # NOVA GARANTIA
-        }
-        
-        # 1. Regerar o PDF
-        novo_pdf = gerar_documento(
-            dados_regeneracao,
-            valor_texto,
-            total_float,
-            dados_db["tipo_garantia"],
-            dados_db["metodo_pagamento"],
-            dados_db["checklist"],
-            tipo_documento,
-            dados_db["dias_garantia"],
-            dados_db.get("detalhes_parcelas")
-        )
-
-        if not novo_pdf:
-            conn.close()
-            messagebox.showerror("Erro", "Não foi possível regerar o PDF com o novo status.")
-            return
-
-        # 2. Atualizar o DB - INCLUSÃO DO CAMPO 'GARANTIA' NO UPDATE
-        c.execute("""
-            UPDATE os SET situacao=?, saida=?, garantia=?, arquivo=? 
-            WHERE numero=? AND tipo_documento=?
-        """, (dados_db["situacao"], dados_db["saida"], dados_db["garantia"], novo_pdf, numero, tipo_documento))
-
-        conn.commit()
-        conn.close()
-        
-        # 3. Atualizar a Treeview
-        dados = {k: dados_regeneracao.get(k, "") for k in dados_regeneracao} 
-        self.tabela.item(item, values=(
-            tipo_documento, numero, dados["cliente"], dados["modelo"], dados["entrada"],
-            dados["saida"] or "N/A", dados["garantia"], dados["situacao"], novo_pdf
-        ))
-
-        messagebox.showinfo("OK", f"Status do {tipo_documento} {numero} atualizado para '{novo_status}' e documento regenerado!")
-
-
-    def atualizar_valor_os(self):
-        """Atualiza o valor de um registro, força o status para CONCLUÍDA e regera o PDF."""
-        item = self.tabela.focus()
-        if not item:
-            messagebox.showwarning("Aviso", "Selecione um documento na lista para atualizar!")
-            return
-
-        novo_valor_str = self.entry_novo_valor.get().strip()
-        if not novo_valor_str:
-            messagebox.showwarning("Aviso", "Insira um novo valor no campo abaixo.")
-            return
-
-        try:
-            novo_total_float = parse_monetario_to_float(novo_valor_str)
-            novo_valor_texto = formatar_monetario(novo_total_float)
-        except ValueError:
-            messagebox.showerror("Erro de Valor", "Formato de novo valor (R$) inválido.")
-            return
-
-        values = self.tabela.item(item)['values']
-        tipo_documento = values[0]
-        numero = values[1]
-        
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT * FROM os WHERE numero=? AND tipo_documento=?", (numero, tipo_documento))
-        row = c.fetchone()
-        
-        if not row:
-            conn.close()
-            messagebox.showerror("Erro", "Registro não encontrado no banco de dados.")
-            return
-
-        col_names = [description[0] for description in c.description]
-        dados_db = dict(zip(col_names, row))
-        
-        dados_db["valor"] = novo_valor_texto
-        
-        status_anterior = dados_db["situacao"]
-        
-        # Se for atualizar o valor, assumimos que o serviço foi concluído (se não estiver cancelado)
-        if dados_db["situacao"] != "CANCELADA":
-            dados_db["situacao"] = "CONCLUÍDA" 
-            if not dados_db["saida"] or dados_db["saida"] == "N/A":
-                 dados_db["saida"] = datetime.now().strftime("%d/%m/%Y")
-
-        # >>> NOVO: Recalcula a garantia se o status foi alterado/mantido como CONCLUÍDA <<<
-        if dados_db["situacao"] == "CONCLUÍDA" and dados_db["tipo_garantia"] == "Com Garantia":
-            tipo_garantia = dados_db["tipo_garantia"]
-            dias_garantia_num = dados_db["dias_garantia"]
-            entrada = dados_db["entrada"]
-            
-            novo_garantia = "S/Garantia" 
-            
-            if dias_garantia_num > 0:
-                try:
-                    data_base = datetime.strptime(entrada, "%d/%m/%Y")
-                    data_garantia = data_base + timedelta(days=dias_garantia_num)
-                    novo_garantia = data_garantia.strftime("%d/%m/%Y")
-                except ValueError:
-                    data_garantia = datetime.now() + timedelta(days=dias_garantia_num)
-                    novo_garantia = data_garantia.strftime("%d/%m/%Y")
-            
-            dados_db["garantia"] = novo_garantia
-        # Se o status for CANCELADA, a garantia deve ser mantida como S/Garantia, o que já está implícito
-        # pois o valor inicial do banco é 'S/Garantia' e só é calculado aqui se for 'CONCLUÍDA'.
-        # >>> FIM DA NOVA LÓGICA <<<
-
-        # Corrigido o dicionário de dados para regeneração
-        dados_regeneracao = {
-            "numero": dados_db["numero"],
-            "cliente": dados_db["cliente"],
-            "telefone": dados_db["telefone"],
-            "modelo": dados_db["modelo"],
-            "imei": dados_db["imei"],
-            "senha": dados_db["senha"],
-            "acessorios": dados_db["acessorios"],
-            "problemas": dados_db["problemas"],
-            "situacao": dados_db["situacao"],
-            "entrada": dados_db["entrada"],
-            "saida": dados_db["saida"],
-            "garantia": dados_db["garantia"] # Garantia ajustada
-        }
-        
-        novo_pdf = gerar_documento(
-            dados_regeneracao,
-            novo_valor_texto,
-            novo_total_float,
-            dados_db["tipo_garantia"],
-            dados_db["metodo_pagamento"],
-            dados_db["checklist"],
-            tipo_documento,
-            dados_db["dias_garantia"],
-            dados_db.get("detalhes_parcelas")
-        )
-
-        if not novo_pdf:
-            conn.close()
-            messagebox.showerror("Erro", "Não foi possível regerar o PDF.")
-            return
-
-        # 2. Atualizar o DB - INCLUSÃO DO CAMPO 'GARANTIA' NO UPDATE
-        c.execute("""
-            UPDATE os SET valor=?, situacao=?, saida=?, garantia=?, arquivo=? 
-            WHERE numero=? AND tipo_documento=?
-        """, (novo_valor_texto, dados_db["situacao"], dados_db["saida"], dados_db["garantia"], novo_pdf, numero, tipo_documento))
-
-        conn.commit()
-        conn.close()
-        
-        self.entry_novo_valor.delete(0, tk.END) 
-        
-        dados = {k: dados_regeneracao.get(k, "") for k in dados_regeneracao} 
-        self.tabela.item(item, values=(
-            tipo_documento, numero, dados["cliente"], dados["modelo"], dados["entrada"],
-            dados["saida"] or "N/A", dados["garantia"], dados["situacao"], novo_pdf
-        ))
-
-        messagebox.showinfo("OK", f"Valor do {tipo_documento} atualizado e documento regenerado!")
-
 
     def abrir_pdf(self):
         """Abre o PDF selecionado de forma compatível com diferentes sistemas operacionais."""
@@ -2030,11 +1217,3 @@ class SistemaOS:
             abrir_arquivo(caminho_pdf)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao abrir o PDF:\n{str(e)}")
-
-
-if __name__ == "__main__":
-    criar_banco()
-    # Substitui Tk() por ctk.CTk()
-    root = ctk.CTk()
-    SistemaOS(root)
-    root.mainloop()
